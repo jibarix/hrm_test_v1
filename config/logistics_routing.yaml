@@ -47,9 +47,9 @@ arch:
   forward_dtype: bfloat16
 
 # Training hyperparameters (laptop-optimized)
-global_batch_size: 64            # Conservative for 8GB VRAM
-epochs: 10000                    # Suitable for 1K dataset
-eval_interval: 1000              # Frequent evaluation
+global_batch_size: 32            # Conservative for 8GB VRAM
+epochs: 2000                    # Suitable for 1K dataset
+eval_interval: 100              # Frequent evaluation
 checkpoint_every_eval: true      # Save checkpoints at each eval
 
 # Learning rates (your proven values)
@@ -76,6 +76,3 @@ checkpoint_path: null           # Auto-generate based on project/run names
 # Experiment settings
 seed: 0                         # Reproducibility
 eval_save_outputs: ["inputs", "labels", "logits", "puzzle_identifiers"]  # Save for analysis
-
-# Additional training stability
-checkpoint_every_eval: true     # Important for small dataset experiments
