@@ -96,6 +96,11 @@ class TrainState:
 
     step: int
     total_steps: int
+    
+    # NEW: Enhanced tracking for batch rejection
+    total_batches_processed: int = 0
+    total_batches_rejected: int = 0
+    consecutive_rejections: int = 0
 
 
 def create_dataloader(config: PretrainConfig, split: str, rank: int, world_size: int, **kwargs):
@@ -200,7 +205,12 @@ def init_train_state(config: PretrainConfig, train_metadata: PuzzleDatasetMetada
         model=model,
         optimizers=optimizers,
         optimizer_lrs=optimizer_lrs,
-        carry=None
+        carry=None,
+        
+        # Initialize enhanced tracking
+        total_batches_processed=0,
+        total_batches_rejected=0,
+        consecutive_rejections=0
     )
 
 
@@ -223,10 +233,43 @@ def compute_lr(base_lr: float, config: PretrainConfig, train_state: TrainState):
     )
 
 
-def train_batch(config: PretrainConfig, train_state: TrainState, batch: Any, global_batch_size: int, rank: int, world_size: int):
+# ============================================================================
+# Enhanced Training Functions with Batch Rejection & Resampling
+# ============================================================================
+
+def is_batch_rejected(metrics, config):
+    """
+    Determine if a batch should be rejected based on anti-cheat metrics
+    """
+    blocked_learning = metrics.get("blocked_learning", torch.tensor(0.0)).item()
+    path_ratio = metrics.get("path_ratio", torch.tensor(0.0)).item()
+    
+    # Get rejection thresholds from config with sensible defaults
+    max_path_ratio = getattr(config.arch.loss, 'max_path_ratio', 0.1)
+    rejection_threshold = getattr(config.arch, 'rejection_path_ratio_threshold', max_path_ratio * 1.5)  # 50% buffer
+    
+    # Reject if:
+    # 1. Explicitly blocked by loss function (blocked_learning > 0.5)
+    # 2. Path ratio exceeds threshold (spam detection)
+    should_reject = (blocked_learning > 0.5) or (path_ratio > rejection_threshold)
+    
+    return should_reject, {
+        "blocked_learning": blocked_learning,
+        "path_ratio": path_ratio,
+        "rejection_threshold": rejection_threshold
+    }
+
+
+def train_batch_with_rejection(config: PretrainConfig, train_state: TrainState, batch: Any, global_batch_size: int, rank: int, world_size: int):
+    """
+    Enhanced train_batch function with rejection capability
+    Returns: (accepted: bool, metrics: dict or None)
+    """
     train_state.step += 1
-    if train_state.step > train_state.total_steps:  # At most train_total_steps
-        return
+    train_state.total_batches_processed += 1
+    
+    if train_state.step > train_state.total_steps:
+        return True, None  # Accept to end training
 
     # To device
     batch = {k: v.cuda() for k, v in batch.items()}
@@ -234,14 +277,41 @@ def train_batch(config: PretrainConfig, train_state: TrainState, batch: Any, glo
     # Init carry if it is None
     if train_state.carry is None:
         with torch.device("cuda"):
-            train_state.carry = train_state.model.initial_carry(batch)  # type: ignore
+            train_state.carry = train_state.model.initial_carry(batch)
 
-    # Forward
+    # Forward pass (always compute to get metrics)
     train_state.carry, loss, metrics, _, _ = train_state.model(carry=train_state.carry, batch=batch, return_keys=[])
 
+    # Check if batch should be rejected
+    should_reject, rejection_info = is_batch_rejected(metrics, config)
+    
+    if should_reject:
+        # REJECT BATCH - No gradient computation, no optimizer step
+        train_state.total_batches_rejected += 1
+        train_state.consecutive_rejections += 1
+        
+        if rank == 0:
+            print(f"[Step {train_state.step}] REJECTED batch - path_ratio: {rejection_info['path_ratio']:.3f}, "
+                  f"blocked: {rejection_info['blocked_learning']:.1f}, "
+                  f"consecutive: {train_state.consecutive_rejections}")
+        
+        # Return rejection metrics for logging
+        rejection_metrics = {
+            "train/batch_rejected": 1.0,
+            "train/rejection_path_ratio": rejection_info['path_ratio'],
+            "train/rejection_blocked": rejection_info['blocked_learning'],
+            "train/consecutive_rejections": float(train_state.consecutive_rejections),
+            "train/total_rejection_rate": train_state.total_batches_rejected / train_state.total_batches_processed,
+        }
+        return False, rejection_metrics  # Rejected
+    
+    # ACCEPT BATCH - Normal training
+    train_state.consecutive_rejections = 0  # Reset consecutive counter
+    
+    # Backward pass
     ((1 / global_batch_size) * loss).backward()
 
-    # Allreduce
+    # Allreduce gradients
     if world_size > 1:
         for param in train_state.model.parameters():
             if param.grad is not None:
@@ -251,19 +321,15 @@ def train_batch(config: PretrainConfig, train_state: TrainState, batch: Any, glo
     lr_this_step = None    
     for optim, base_lr in zip(train_state.optimizers, train_state.optimizer_lrs):
         lr_this_step = compute_lr(base_lr, config, train_state)
-
         for param_group in optim.param_groups:
             param_group['lr'] = lr_this_step
-            
         optim.step()
         optim.zero_grad()
 
-    # Reduce metrics
+    # Process metrics for accepted batches
     if len(metrics):
         assert not any(v.requires_grad for v in metrics.values())
-
-        metric_keys = list(sorted(metrics.keys()))  # Sort keys to guarantee all processes use the same order.
-        # Reduce and reconstruct
+        metric_keys = list(sorted(metrics.keys()))
         metric_values = torch.stack([metrics[k] for k in metric_keys])
         if world_size > 1:
             dist.reduce(metric_values, dst=0)
@@ -273,11 +339,111 @@ def train_batch(config: PretrainConfig, train_state: TrainState, batch: Any, glo
             reduced_metrics = {k: metric_values[i] for i, k in enumerate(metric_keys)}
             
             # Postprocess
-            count = max(reduced_metrics["count"], 1)  # Avoid NaNs
+            count = max(reduced_metrics["count"], 1)
             reduced_metrics = {f"train/{k}": v / (global_batch_size if k.endswith("loss") else count) for k, v in reduced_metrics.items()}
-
+            
+            # Add training metadata
             reduced_metrics["train/lr"] = lr_this_step
-            return reduced_metrics
+            reduced_metrics["train/batch_rejected"] = 0.0  # Mark as accepted
+            reduced_metrics["train/consecutive_rejections"] = 0.0
+            reduced_metrics["train/total_rejection_rate"] = train_state.total_batches_rejected / train_state.total_batches_processed
+            
+            return True, reduced_metrics  # Accepted
+
+    return True, None  # Accepted but no metrics
+
+
+class BatchResampler:
+    """
+    Helper class to handle batch resampling when rejections occur
+    """
+    def __init__(self, dataloader, max_consecutive_rejections=10):
+        self.dataloader = dataloader
+        self.dataloader_iter = iter(dataloader)
+        self.max_consecutive_rejections = max_consecutive_rejections
+        
+    def get_next_batch(self):
+        """Get next batch from dataloader, handling StopIteration"""
+        try:
+            return next(self.dataloader_iter)
+        except StopIteration:
+            # Restart dataloader
+            try:
+                self.dataloader_iter = iter(self.dataloader)
+                return next(self.dataloader_iter)
+            except StopIteration:
+                # Empty dataloader - this shouldn't happen
+                print("Warning: Empty dataloader encountered")
+                return None
+        except Exception as e:
+            print(f"Error getting next batch: {e}")
+            return None
+    
+    def get_batch_with_rejection_handling(self, config, train_state, rank, world_size, progress_bar=None):
+        """
+        Get a batch and train on it, handling rejections with resampling
+        Returns: (success: bool, final_metrics: dict or None)
+        """
+        attempts = 0
+        final_metrics = None
+        
+        while attempts < self.max_consecutive_rejections:
+            # Get next batch
+            batch_data = self.get_next_batch()
+            if batch_data is None:
+                # No more data available
+                return False, None
+            
+            set_name, batch, global_batch_size = batch_data
+            
+            # Try training on this batch
+            accepted, metrics = train_batch_with_rejection(
+                config, train_state, batch, global_batch_size, rank, world_size
+            )
+            
+            if accepted:
+                # Batch was accepted - we're done
+                final_metrics = metrics
+                if rank == 0 and progress_bar is not None and metrics is not None:
+                    progress_bar.update(train_state.step - progress_bar.n)
+                return True, final_metrics
+            else:
+                # Batch was rejected - log and try next batch
+                attempts += 1
+                if rank == 0 and metrics is not None:
+                    # Log rejection metrics immediately
+                    if wandb.run is not None:
+                        wandb.log(metrics, step=train_state.step)
+        
+        # Too many consecutive rejections - force accept the last batch to prevent infinite loop
+        if rank == 0:
+            print(f"WARNING: {self.max_consecutive_rejections} consecutive rejections at step {train_state.step}. "
+                  "This indicates the model may be stuck in a degenerate state.")
+        
+        # Force accept by temporarily disabling rejection
+        batch_data = self.get_next_batch()
+        if batch_data is not None:
+            set_name, batch, global_batch_size = batch_data
+            
+            # Ensure batch is on correct device
+            batch = {k: v.cuda() for k, v in batch.items()}
+            
+            # Force accept by skipping rejection check (just do normal training)
+            train_state.carry, loss, metrics, _, _ = train_state.model(carry=train_state.carry, batch=batch, return_keys=[])
+            ((1 / global_batch_size) * loss).backward()
+            
+            # Apply optimizer
+            for optim, base_lr in zip(train_state.optimizers, train_state.optimizer_lrs):
+                lr_this_step = compute_lr(base_lr, config, train_state)
+                for param_group in optim.param_groups:
+                    param_group['lr'] = lr_this_step
+                optim.step()
+                optim.zero_grad()
+            
+            if rank == 0:
+                print(f"Force-accepted batch at step {train_state.step}")
+        
+        return True, None
 
 
 def evaluate(config: PretrainConfig, train_state: TrainState, eval_loader: torch.utils.data.DataLoader, eval_metadata: PuzzleDatasetMetadata, rank: int, world_size: int):
@@ -436,18 +602,64 @@ def launch(hydra_config: DictConfig):
         wandb.log({"num_params": sum(x.numel() for x in train_state.model.parameters())}, step=0)
         save_code_and_config(config)
 
-    # Training Loop
+    # Enhanced Training Loop with Batch Rejection & Resampling
+    max_consecutive_rejections = getattr(config.arch, 'max_consecutive_rejections', 10)
+    enable_batch_rejection = getattr(config.arch, 'enable_batch_rejection', True)
+    
+    if RANK == 0:
+        print(f"Enhanced training with batch rejection: {enable_batch_rejection}")
+        print(f"Max consecutive rejections: {max_consecutive_rejections}")
+        if enable_batch_rejection:
+            # Pre-calculate estimated batches for logging
+            estimated_examples = train_metadata.total_groups * train_metadata.mean_puzzle_examples * train_epochs_per_iter
+            estimated_batches = max(int(estimated_examples / config.global_batch_size), 10)
+            print(f"Estimated {estimated_batches} batches per epoch (from {estimated_examples:.0f} examples)")
+
     for _iter_id in range(total_iters):
-        print (f"[Rank {RANK}, World Size {WORLD_SIZE}]: Epoch {_iter_id * train_epochs_per_iter}")
+        if RANK == 0:
+            print(f"[Rank {RANK}, World Size {WORLD_SIZE}]: Epoch {_iter_id * train_epochs_per_iter}")
 
-        ############ Train Iter
+        ############ Enhanced Training Iteration with Rejection Handling
         train_state.model.train()
-        for set_name, batch, global_batch_size in train_loader:
-            metrics = train_batch(config, train_state, batch, global_batch_size, rank=RANK, world_size=WORLD_SIZE)
-
-            if RANK == 0 and metrics is not None:
-                wandb.log(metrics, step=train_state.step)
-                progress_bar.update(train_state.step - progress_bar.n)  # type: ignore
+        
+        if enable_batch_rejection:
+            # Use enhanced batch resampler
+            batch_resampler = BatchResampler(train_loader, max_consecutive_rejections)
+            
+            # Process batches with rejection handling
+            epoch_batches_processed = 0
+            # Estimate batches per epoch: dataset_size / batch_size (approximate)
+            estimated_examples_per_epoch = train_metadata.total_groups * train_metadata.mean_puzzle_examples * train_epochs_per_iter
+            target_batches_per_epoch = max(int(estimated_examples_per_epoch / config.global_batch_size), 10)  # At least 10 batches
+            
+            while epoch_batches_processed < target_batches_per_epoch and train_state.step < train_state.total_steps:
+                success, metrics = batch_resampler.get_batch_with_rejection_handling(
+                    config, train_state, RANK, WORLD_SIZE, progress_bar
+                )
+                
+                if not success:
+                    break  # No more data or training complete
+                
+                if RANK == 0 and metrics is not None:
+                    wandb.log(metrics, step=train_state.step)
+                
+                epoch_batches_processed += 1
+                
+                # Log progress periodically
+                if RANK == 0 and epoch_batches_processed % 50 == 0:
+                    rejection_rate = train_state.total_batches_rejected / max(train_state.total_batches_processed, 1)
+                    print(f"  Processed {epoch_batches_processed}/{target_batches_per_epoch} batches, "
+                          f"rejection rate: {rejection_rate:.2%}, "
+                          f"consecutive: {train_state.consecutive_rejections}")
+        
+        else:
+            # Original training loop (no rejection)
+            for set_name, batch, global_batch_size in train_loader:
+                accepted, metrics = train_batch_with_rejection(config, train_state, batch, global_batch_size, rank=RANK, world_size=WORLD_SIZE)
+                
+                if RANK == 0 and metrics is not None:
+                    wandb.log(metrics, step=train_state.step)
+                    progress_bar.update(train_state.step - progress_bar.n)  # type: ignore
 
         ############ Evaluation
         train_state.model.eval()
@@ -456,6 +668,18 @@ def launch(hydra_config: DictConfig):
         if RANK == 0 and metrics is not None:
             wandb.log(metrics, step=train_state.step)
             
+            # Enhanced logging for rejection statistics
+            if enable_batch_rejection:
+                rejection_stats = {
+                    "epoch/total_batches_processed": train_state.total_batches_processed,
+                    "epoch/total_batches_rejected": train_state.total_batches_rejected, 
+                    "epoch/overall_rejection_rate": train_state.total_batches_rejected / max(train_state.total_batches_processed, 1),
+                    "epoch/consecutive_rejections": train_state.consecutive_rejections,
+                }
+                wandb.log(rejection_stats, step=train_state.step)
+                
+                print(f"Epoch {_iter_id} complete. Overall rejection rate: {rejection_stats['epoch/overall_rejection_rate']:.2%}")
+            
         ############ Checkpointing
         if RANK == 0 and (config.checkpoint_every_eval or (_iter_id == total_iters - 1)):
             save_train_state(config, train_state)
@@ -463,6 +687,22 @@ def launch(hydra_config: DictConfig):
     # finalize
     if dist.is_initialized():
         dist.destroy_process_group()
+    
+    # Final summary
+    if RANK == 0 and enable_batch_rejection:
+        final_rejection_rate = train_state.total_batches_rejected / max(train_state.total_batches_processed, 1)
+        print(f"\n🏁 Training Complete!")
+        print(f"📊 Final Statistics:")
+        print(f"   Total batches processed: {train_state.total_batches_processed}")
+        print(f"   Total batches rejected: {train_state.total_batches_rejected}")
+        print(f"   Overall rejection rate: {final_rejection_rate:.2%}")
+        print(f"   Final consecutive rejections: {train_state.consecutive_rejections}")
+        
+        if final_rejection_rate > 0.5:
+            print("⚠️  Warning: High rejection rate suggests model may be struggling with anti-cheat constraints")
+        elif final_rejection_rate < 0.05:
+            print("✅ Low rejection rate indicates model learned to avoid cheating")
+    
     wandb.finish()
 
 

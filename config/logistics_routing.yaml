@@ -1,6 +1,5 @@
-# Complete laptop-optimized config for NYC Logistics Routing
-# Hardware: RTX 3070 Ti Laptop (8GB VRAM)
-# Dataset: 1000 examples
+# Complete Enhanced config/logistics_routing.yaml with all anti-cheat measures
+# Compatible with enhanced losses.py, hrm_act_v1.py, and pretrain.py
 
 defaults:
   - _self_
@@ -11,82 +10,157 @@ hydra:
 # Data path
 data_path: data/logistics-routing-1k
 
-# Architecture
+# Architecture with comprehensive 6-level anti-cheat system
 arch:
   name: hrm.hrm_act_v1@HierarchicalReasoningModel_ACTV1
   
-  # Loss configuration with comprehensive anti-cheating measures
+  # ========================================================================
+  # LEVEL 2 & 6: Batch Rejection (TEMPORARILY DISABLED for initial learning)
+  # ========================================================================
+  enable_batch_rejection: false                   # DISABLED - let other anti-cheat levels work
+  max_consecutive_rejections: 10                  # Max rejections before force-accept
+  rejection_path_ratio_threshold: 0.25            # Reject if path_ratio > this
+  
+  # ACT Validity Gating parameters (NEW - for hrm_act_v1.py) - TEMPORARILY RELAXED  
+  act_validity_gating: true                       # Only reward valid solutions in ACT
+  min_connectivity_for_reward: 0.6               # Relaxed from 0.8 - minimum connectivity for ACT reward
+  min_valid_path_ratio: 0.90                     # Relaxed from 0.95 - minimum valid path ratio for ACT reward
+  
+  # ========================================================================
+  # Enhanced Loss Configuration (6-Level Anti-Cheat System)
+  # ========================================================================
   loss:
     name: losses@ACTLossHead
-    loss_type: weighted_cross_entropy  # Use balanced loss
+    loss_type: weighted_cross_entropy
     
-    # Token IDs (must match your HRM_TOKEN_MAP)
-    path_token_id: 9          # PATH token
-    start_token_id: 7         # START token  
-    end_token_id: 8           # END token
-    obstacle_token_id: 1      # OBSTACLE token
-    grid_width: 40            # Map dimensions
+    # Token IDs (must match HRM_TOKEN_MAP)
+    path_token_id: 9
+    start_token_id: 7
+    end_token_id: 8
+    obstacle_token_id: 1
+    grid_width: 40
     
-    # Loss weights
-    path_weight: 1000.0                 # 40x weight for path tokens (combat imbalance)
-    connectivity_weight: 50.0           # Penalty for disconnected paths
-    sparsity_penalty_weight: 100.0      # Disable for now (weighted loss should handle)
-    max_path_ratio: 0.1                # Cheat detection threshold
-    require_connectivity: true         # Require valid paths
+    # LEVEL 1: Basic weighted loss (original)
+    path_weight: 1000.0                          # Heavy weight for path tokens (was 40.0)
+    
+    # LEVEL 2: Hard constraints (original + enhanced) - TEMPORARILY RELAXED
+    max_path_ratio: 0.20                         # Relaxed from 0.10 - let model learn gradually
+    require_connectivity: true                   # Require valid start→end connection
+    
+    # LEVEL 3: Enhanced penalties (stronger than original)
+    connectivity_weight: 50.0                    # Penalize disconnected paths (was 1.0)
+    sparsity_penalty_weight: 100.0               # Penalize over-sparse predictions (was 0.0)
+    
+    # LEVEL 4: NEW - Direct supervision losses
+    budget_loss_weight: 10.0                     # Match predicted vs true path length
+    coverage_penalty_weight: 5.0                 # Penalize false positive paths
+    
+    # LEVEL 5: NEW - Structured projection 
+    structured_projection_weight: 2.0            # Project to feasible paths using A*
+    enable_projection: false                     # TEMPORARILY DISABLED due to bfloat16 issue
+    
+    # LEVEL 6: NEW - ACT validity gating (configured above in arch section)
+    # These are used by losses.py but configured at arch level:
+    # - act_validity_gating: true
+    # - min_connectivity_for_reward: 0.8  
+    # - min_valid_path_ratio: 0.95
 
-  # ACT (Adaptive Computation Time) settings
-  halt_exploration_prob: 0.1
-  halt_max_steps: 16
+  # ========================================================================
+  # ACT (Adaptive Computation Time) Settings
+  # ========================================================================
+  halt_exploration_prob: 0.1                     # Exploration probability for ACT
+  halt_max_steps: 16                            # Maximum reasoning steps
 
-  # Hierarchical reasoning cycles
-  H_cycles: 2
-  L_cycles: 4
+  # ========================================================================
+  # Hierarchical Reasoning Architecture
+  # ========================================================================
+  H_cycles: 2                                   # High-level reasoning cycles
+  L_cycles: 4                                   # Low-level reasoning cycles
 
-  # Transformer architecture  
-  H_layers: 4
-  L_layers: 4
-  hidden_size: 256
-  num_heads: 4
-  expansion: 4
+  # Transformer architecture (laptop-optimized)
+  H_layers: 4                                   # High-level transformer layers
+  L_layers: 4                                   # Low-level transformer layers  
+  hidden_size: 256                              # Hidden dimension (reduced from 512)
+  num_heads: 4                                  # Attention heads (reduced from 8)
+  expansion: 4                                  # MLP expansion factor
 
   # Embeddings
-  puzzle_emb_ndim: 256
+  puzzle_emb_ndim: 256                          # Puzzle embedding dimension
+  pos_encodings: rope                           # Rotary position encodings
+  rms_norm_eps: 1e-5                           # RMS norm epsilon
+  rope_theta: 10000.0                          # RoPE theta parameter
 
-  # Position encodings
-  pos_encodings: rope
-  rms_norm_eps: 1e-5
-  rope_theta: 10000.0
+  # Forward pass settings
+  forward_dtype: bfloat16                       # Mixed precision training
 
-  # Forward pass dtype
-  forward_dtype: bfloat16
-
-# Training hyperparameters (laptop-optimized)
-global_batch_size: 32
-epochs: 2000
-eval_interval: 100
-checkpoint_every_eval: true
+# ========================================================================
+# Training Hyperparameters (Laptop-Optimized)
+# ========================================================================
+global_batch_size: 32                          # Total batch size across all GPUs
+epochs: 2000                                   # Total training epochs
+eval_interval: 100                             # Evaluate every N epochs
+checkpoint_every_eval: true                    # Save checkpoint at each eval
 
 # Learning rates
-lr: 1e-4
-lr_min_ratio: 0.1
-lr_warmup_steps: 200
+lr: 1e-4                                       # Main learning rate
+lr_min_ratio: 0.1                             # Minimum LR as fraction of max
+lr_warmup_steps: 200                          # Linear warmup steps
 
-# Optimizer settings
-beta1: 0.9
-beta2: 0.95
-
-# Regularization
-weight_decay: 1.0
-puzzle_emb_weight_decay: 1.0
+# Optimizer settings (AdamW-style)
+beta1: 0.9                                     # Adam beta1
+beta2: 0.95                                    # Adam beta2
+weight_decay: 1.0                              # L2 regularization
+puzzle_emb_weight_decay: 1.0                   # Puzzle embedding regularization
 
 # Puzzle embedding learning rate
-puzzle_emb_lr: 1e-4
+puzzle_emb_lr: 1e-4                            # Separate LR for puzzle embeddings
 
-# Project and run naming
-project_name: null
-run_name: null
-checkpoint_path: null
+# ========================================================================
+# Logging & Monitoring
+# ========================================================================
+project_name: null                             # Will auto-generate if null
+run_name: null                                 # Will auto-generate if null  
+checkpoint_path: null                          # Will auto-generate if null
 
 # Experiment settings
-seed: 0
+seed: 0                                        # Random seed
 eval_save_outputs: ["inputs", "labels", "logits", "puzzle_identifiers"]
+
+# ========================================================================
+# Optional: Curriculum Learning (Future Enhancement)
+# ========================================================================
+curriculum:
+  enable: false                                # Enable curriculum learning
+  start_grid_size: 20                         # Start with smaller grids
+  progression_steps: [500, 1000, 1500]        # When to increase grid size
+  final_grid_size: 40                         # Final grid size
+
+# ========================================================================
+# Hardware Optimization Notes
+# ========================================================================
+
+# ========================================================================
+# Temporary Threshold Relaxation for Initial Learning
+# ========================================================================
+# The model has successfully learned sparsity (path_ratio: 1.0 → 0.1-0.3)
+# Thresholds are temporarily relaxed to allow continued learning:
+#   - max_path_ratio: 0.10 → 0.20 (allow 20% paths while learning)
+#   - rejection_threshold: 0.15 → 0.25 (reject only >25% paths)
+#   - min_connectivity_for_reward: 0.8 → 0.6 (easier ACT rewards)
+# 
+# After connectivity improves (train/start_end_connectivity > 0.5), 
+# gradually tighten back to original values:
+#   - max_path_ratio: 0.20 → 0.15 → 0.10
+#   - rejection_threshold: 0.25 → 0.20 → 0.15
+#   - min_connectivity_for_reward: 0.6 → 0.7 → 0.8
+# ========================================================================
+# This config is optimized for:
+# - RTX 3070 Ti Laptop (8GB VRAM)
+# - Windows 11 with SDPA instead of FlashAttention
+# - Small dataset (1000 examples)
+# 
+# For more powerful hardware, consider:
+# - global_batch_size: 128
+# - hidden_size: 512
+# - num_heads: 8
+# - H_layers: 6, L_layers: 6

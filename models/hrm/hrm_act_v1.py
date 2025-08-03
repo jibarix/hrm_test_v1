@@ -99,6 +99,126 @@ class HierarchicalReasoningModel_ACTV1ReasoningModule(nn.Module):
         return hidden_states
 
 
+# ============================================================================
+# Enhanced Validity Functions for ACT (imported from losses.py logic)
+# ============================================================================
+
+def compute_start_end_connectivity_fast(predicted_tokens, labels, start_token_id=7, end_token_id=8, path_token_id=9, grid_width=40):
+    """
+    Fast version of start-end connectivity check for ACT (single batch element)
+    Returns 1.0 if connected, 0.0 if not connected
+    """
+    batch_size = predicted_tokens.shape[0]
+    if batch_size == 0:
+        return 0.0
+    
+    # Take first batch element for speed (ACT processes one at a time anyway)
+    pred_grid = predicted_tokens[0].reshape(grid_width, grid_width)
+    label_grid = labels[0].reshape(grid_width, grid_width)
+    
+    # Find start and end positions in labels
+    start_positions = (label_grid == start_token_id).nonzero()
+    end_positions = (label_grid == end_token_id).nonzero()
+    
+    if len(start_positions) == 0 or len(end_positions) == 0:
+        return 0.0
+        
+    start_pos = (start_positions[0][0].item(), start_positions[0][1].item())
+    end_pos = (end_positions[0][0].item(), end_positions[0][1].item())
+    
+    # Find all predicted path positions
+    path_positions = (pred_grid == path_token_id).nonzero()
+    path_set = {(pos[0].item(), pos[1].item()) for pos in path_positions}
+    
+    # Add start and end to path for connectivity check
+    path_set.add(start_pos)
+    path_set.add(end_pos)
+    
+    # BFS from start to see if we can reach end
+    visited = set()
+    queue = [start_pos]
+    
+    while queue:
+        current = queue.pop(0)
+        if current in visited:
+            continue
+        visited.add(current)
+        
+        if current == end_pos:
+            return 1.0  # Found connection
+            
+        # Check 4-connected neighbors
+        for dr, dc in [(0,1), (0,-1), (1,0), (-1,0)]:
+            nr, nc = current[0] + dr, current[1] + dc
+            neighbor = (nr, nc)
+            if (neighbor not in visited and 
+                0 <= nr < grid_width and 0 <= nc < grid_width and
+                neighbor in path_set):
+                queue.append(neighbor)
+    
+    return 0.0  # No connection found
+
+
+def compute_valid_path_ratio_fast(predicted_tokens, labels, path_token_id=9, obstacle_token_id=1, grid_width=40):
+    """Fast version of valid path ratio check for ACT"""
+    if predicted_tokens.shape[0] == 0:
+        return 0.0
+    
+    pred_grid = predicted_tokens[0].reshape(grid_width, grid_width)
+    label_grid = labels[0].reshape(grid_width, grid_width)
+    
+    # Find predicted path positions
+    pred_path_positions = (pred_grid == path_token_id).nonzero()
+    
+    if len(pred_path_positions) == 0:
+        return 1.0  # No paths predicted, so all are "valid"
+        
+    valid_count = 0
+    for pos in pred_path_positions:
+        r, c = pos[0].item(), pos[1].item()
+        # Check if this position is not an obstacle in the input
+        if label_grid[r, c] != obstacle_token_id:
+            valid_count += 1
+    
+    return valid_count / len(pred_path_positions)
+
+
+def is_valid_solution_fast(predicted_tokens, labels, max_path_ratio=0.10, min_connectivity=0.8, 
+                          min_valid_ratio=0.95, path_token_id=9, start_token_id=7, 
+                          end_token_id=8, obstacle_token_id=1, grid_width=40):
+    """
+    Fast validity check for ACT rewards
+    Returns True if solution meets all validity criteria
+    """
+    if predicted_tokens.shape[0] == 0:
+        return False
+    
+    # Check path ratio (sparsity)
+    pred_path_mask = (predicted_tokens == path_token_id)
+    path_ratio = pred_path_mask.float().mean().item()
+    
+    if path_ratio > max_path_ratio:
+        return False
+    
+    # Check connectivity
+    connectivity = compute_start_end_connectivity_fast(
+        predicted_tokens, labels, start_token_id, end_token_id, path_token_id, grid_width
+    )
+    
+    if connectivity < min_connectivity:
+        return False
+    
+    # Check valid path ratio (paths on roads, not obstacles)
+    valid_ratio = compute_valid_path_ratio_fast(
+        predicted_tokens, labels, path_token_id, obstacle_token_id, grid_width
+    )
+    
+    if valid_ratio < min_valid_ratio:
+        return False
+    
+    return True
+
+
 class HierarchicalReasoningModel_ACTV1_Inner(nn.Module):
     def __init__(self, config: HierarchicalReasoningModel_ACTV1Config) -> None:
         super().__init__()
@@ -214,12 +334,18 @@ class HierarchicalReasoningModel_ACTV1_Inner(nn.Module):
 
 
 class HierarchicalReasoningModel_ACTV1(nn.Module):
-    """ACT wrapper."""
+    """Enhanced ACT wrapper with validity-based rewards."""
 
     def __init__(self, config_dict: dict):
         super().__init__()
         self.config = HierarchicalReasoningModel_ACTV1Config(**config_dict)
         self.inner = HierarchicalReasoningModel_ACTV1_Inner(self.config)
+        
+        # NEW: ACT validity gating parameters (can be set from config)
+        self.act_validity_gating = getattr(self.config, 'act_validity_gating', True)
+        self.min_connectivity_for_reward = getattr(self.config, 'min_connectivity_for_reward', 0.8)
+        self.min_valid_path_ratio = getattr(self.config, 'min_valid_path_ratio', 0.95)
+        self.max_path_ratio_for_reward = getattr(self.config, 'max_path_ratio', 0.1)
 
     @property
     def puzzle_emb(self):
@@ -263,21 +389,89 @@ class HierarchicalReasoningModel_ACTV1(nn.Module):
 
             # if training, and ACT is enabled
             if self.training and (self.config.halt_max_steps > 1):
-                # Halt signal
-                # NOTE: During evaluation, always use max steps, this is to guarantee the same halting steps inside a batch for batching purposes
-                halted = halted | (q_halt_logits > q_continue_logits)
+                # ENHANCED: Validity-based halt signal instead of raw accuracy
+                
+                if self.act_validity_gating:
+                    # NEW: Use validity-based rewards instead of raw accuracy
+                    predicted_tokens = torch.argmax(logits, dim=-1)
+                    
+                    # Check if current solution is valid for each batch element
+                    validity_rewards = []
+                    for b in range(predicted_tokens.shape[0]):
+                        is_valid = is_valid_solution_fast(
+                            predicted_tokens[b:b+1], 
+                            new_current_data["labels"][b:b+1],
+                            max_path_ratio=self.max_path_ratio_for_reward,
+                            min_connectivity=self.min_connectivity_for_reward,
+                            min_valid_ratio=self.min_valid_path_ratio,
+                            path_token_id=9, start_token_id=7, end_token_id=8, obstacle_token_id=1
+                        )
+                        validity_rewards.append(1.0 if is_valid else 0.0)
+                    
+                    validity_rewards = torch.tensor(validity_rewards, device=logits.device, dtype=torch.float32)
+                    
+                    # Halt signal based on validity, not raw Q-values
+                    # Only halt if solution is valid AND Q-halt > Q-continue
+                    valid_solutions = validity_rewards > 0.5
+                    q_wants_halt = q_halt_logits > q_continue_logits
+                    halted = halted | (valid_solutions & q_wants_halt)
+                    
+                else:
+                    # Original behavior: halt based on Q-values only
+                    halted = halted | (q_halt_logits > q_continue_logits)
 
-                # Exploration
+                # Exploration: minimum steps before considering halting
                 min_halt_steps = (torch.rand_like(q_halt_logits) < self.config.halt_exploration_prob) * torch.randint_like(new_steps, low=2, high=self.config.halt_max_steps + 1)
-
                 halted = halted & (new_steps >= min_halt_steps)
 
-                # Compute target Q
-                # NOTE: No replay buffer and target networks for computing target Q-value.
-                # As batch_size is large, there're many parallel envs.
-                # Similar concept as PQN https://arxiv.org/abs/2407.04811
-                next_q_halt_logits, next_q_continue_logits = self.inner(new_inner_carry, new_current_data)[-1]
-                
-                outputs["target_q_continue"] = torch.sigmoid(torch.where(is_last_step, next_q_halt_logits, torch.maximum(next_q_halt_logits, next_q_continue_logits)))
+                # ENHANCED: Compute target Q using validity instead of raw accuracy
+                if self.act_validity_gating:
+                    # Get next step predictions for target Q computation
+                    next_carry, next_logits, (next_q_halt_logits, next_q_continue_logits) = self.inner(new_inner_carry, new_current_data)
+                    next_predicted_tokens = torch.argmax(next_logits, dim=-1)
+                    
+                    # Compute next step validity rewards
+                    next_validity_rewards = []
+                    for b in range(next_predicted_tokens.shape[0]):
+                        is_valid = is_valid_solution_fast(
+                            next_predicted_tokens[b:b+1], 
+                            new_current_data["labels"][b:b+1],
+                            max_path_ratio=self.max_path_ratio_for_reward,
+                            min_connectivity=self.min_connectivity_for_reward,
+                            min_valid_ratio=self.min_valid_path_ratio,
+                            path_token_id=9, start_token_id=7, end_token_id=8, obstacle_token_id=1
+                        )
+                        next_validity_rewards.append(1.0 if is_valid else 0.0)
+                    
+                    next_validity_rewards = torch.tensor(next_validity_rewards, device=logits.device, dtype=torch.float32)
+                    
+                    # Target Q-continue: reward if next step would be valid
+                    outputs["target_q_continue"] = torch.sigmoid(
+                        torch.where(
+                            is_last_step, 
+                            next_validity_rewards,  # Use validity reward instead of Q-halt
+                            torch.maximum(next_q_halt_logits, next_q_continue_logits)
+                        )
+                    )
+                    
+                    # Store validity rewards for logging in loss function
+                    outputs["validity_rewards"] = validity_rewards
+                    outputs["next_validity_rewards"] = next_validity_rewards
+                    
+                else:
+                    # Original Q-learning target computation
+                    next_q_halt_logits, next_q_continue_logits = self.inner(new_inner_carry, new_current_data)[-1]
+                    
+                    # Use raw accuracy instead of validity (original behavior)
+                    predicted_tokens = torch.argmax(logits, dim=-1)
+                    seq_is_correct = (predicted_tokens == new_current_data["labels"]).all(dim=-1)
+                    
+                    outputs["target_q_continue"] = torch.sigmoid(
+                        torch.where(
+                            is_last_step, 
+                            seq_is_correct.float(),
+                            torch.maximum(next_q_halt_logits, next_q_continue_logits)
+                        )
+                    )
 
         return HierarchicalReasoningModel_ACTV1Carry(new_inner_carry, new_steps, halted, new_current_data), outputs
