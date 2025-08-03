@@ -1,37 +1,81 @@
-# Data
+# Complete laptop-optimized config for NYC Logistics Routing
+# Hardware: RTX 3070 Ti Laptop (8GB VRAM)
+# Dataset: 1000 examples
+
+defaults:
+  - _self_
+
+hydra:
+  output_subdir: null
+
+# Data path
 data_path: data/logistics-routing-1k
 
-# Architecture  
+# Architecture
 arch:
-  name: HRMModel
-  loss:
-    name: ACTLossHead
-    loss_type: stablemax_cross_entropy
+  name: hrm.hrm_act_v1@HierarchicalReasoningModel_ACTV1
   
-  # HRM-specific params
-  L_cycles: 4
-  halt_max_steps: 8
-  d_model: 512
-  d_ff: 2048
-  n_layers: 8
+  # Loss configuration
+  loss:
+    name: losses@ACTLossHead
+    loss_type: stablemax_cross_entropy
 
-# Training hyperparameters
-global_batch_size: 384
-epochs: 10000
-eval_interval: 1000
+  # ACT (Adaptive Computation Time) settings
+  halt_exploration_prob: 0.1
+  halt_max_steps: 8              # Reduced from 16 to prevent overfitting
 
-# Learning rates
-lr: 1e-4
-puzzle_emb_lr: 1e-4
-lr_min_ratio: 0.1
-lr_warmup_steps: 100
+  # Hierarchical reasoning cycles (optimized for routing)
+  H_cycles: 2                    # High-level planning cycles
+  L_cycles: 4                    # Low-level execution cycles (increased for routing)
 
-# Regularization
-weight_decay: 1.0
-puzzle_emb_weight_decay: 1.0
-beta1: 0.9
-beta2: 0.999
+  # Transformer architecture
+  H_layers: 4                    # High-level module layers
+  L_layers: 4                    # Low-level module layers
+  hidden_size: 512               # Model dimension
+  num_heads: 8                   # Attention heads
+  expansion: 4                   # FFN expansion ratio
 
-# Logging
-checkpoint_every_eval: true
-eval_save_outputs: ["labels", "predictions"]
+  # Embeddings
+  puzzle_emb_ndim: 512           # Same as hidden_size
+
+  # Position encodings
+  pos_encodings: rope            # Rotary position embeddings
+  rms_norm_eps: 1e-5            # RMSNorm epsilon
+  rope_theta: 10000.0           # RoPE base frequency
+
+  # Forward pass dtype
+  forward_dtype: bfloat16
+
+# Training hyperparameters (laptop-optimized)
+global_batch_size: 64            # Conservative for 8GB VRAM
+epochs: 10000                    # Suitable for 1K dataset
+eval_interval: 1000              # Frequent evaluation
+checkpoint_every_eval: true      # Save checkpoints at each eval
+
+# Learning rates (your proven values)
+lr: 1e-4                        # Main learning rate
+lr_min_ratio: 0.1               # LR decay to 10% of original
+lr_warmup_steps: 100            # Short warmup for small dataset
+
+# Optimizer settings (Adam-like, as in paper)
+beta1: 0.9                      # Adam beta1
+beta2: 0.95                     # Adam beta2 (slightly higher than default)
+
+# Regularization (your strong regularization)
+weight_decay: 1.0               # Your value (vs default 0.1)
+puzzle_emb_weight_decay: 1.0    # Your value (vs default 0.1)
+
+# Puzzle embedding learning rate
+puzzle_emb_lr: 1e-4             # Your value (vs default 1e-2)
+
+# Project and run naming
+project_name: null              # Auto-generate: "Logistics-routing-1k ACT-torch"
+run_name: null                  # Auto-generate: "HierarchicalReasoningModel_ACTV1 adjective-animal"
+checkpoint_path: null           # Auto-generate based on project/run names
+
+# Experiment settings
+seed: 0                         # Reproducibility
+eval_save_outputs: ["inputs", "labels", "logits", "puzzle_identifiers"]  # Save for analysis
+
+# Additional training stability
+checkpoint_every_eval: true     # Important for small dataset experiments

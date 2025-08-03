@@ -25,6 +25,24 @@
             background-color: #3b82f6 !important;
             color: white !important;
         }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        .btn:disabled:hover {
+            transform: none;
+            box-shadow: none;
+        }
+        
+        /* Mode button styles */
+        .mode-btn {
+            transition: all 0.2s ease-in-out;
+        }
+        .mode-btn.active {
+            background-color: #3b82f6 !important;
+            color: white !important;
+        }
+        
         canvas {
             image-rendering: -moz-crisp-edges;
             image-rendering: -webkit-crisp-edges;
@@ -48,11 +66,23 @@
     <div class="w-full max-w-6xl mx-auto bg-white rounded-xl shadow-lg p-4 sm:p-6">
         <div class="text-center mb-4">
             <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">NYC Logistics & Routing Simulator</h1>
-            <p class="text-gray-500 mt-1">HRM-Compatible Training Data Generator</p>
+            <p class="text-gray-500 mt-1">HRM-Compatible Training Data Generator & Dataset Browser</p>
         </div>
 
-        <!-- Controls -->
-        <div class="flex flex-col gap-4 mb-4">
+        <!-- Mode Selection -->
+        <div class="flex justify-center mb-4">
+            <div class="flex bg-gray-100 rounded-lg p-1">
+                <button id="generate-mode-btn" class="mode-btn px-4 py-2 rounded-md font-medium active bg-blue-500 text-white">
+                    🎮 Generate Mode
+                </button>
+                <button id="browse-mode-btn" class="mode-btn px-4 py-2 rounded-md font-medium text-gray-600">
+                    📊 Browse Dataset
+                </button>
+            </div>
+        </div>
+
+        <!-- Generate Mode Controls -->
+        <div id="generate-controls" class="flex flex-col gap-4 mb-4">
             <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
                 <div class="flex items-center gap-2">
                     <span class="font-semibold text-gray-700">Vehicle:</span>
@@ -90,6 +120,41 @@
             </div>
             <div id="data-progress" class="text-center text-sm text-gray-600 mt-2 hidden">
                 Collecting training data: <span id="progress-text">0/1000</span>
+            </div>
+        </div>
+
+        <!-- Browse Mode Controls -->
+        <div id="browse-controls" class="flex flex-col gap-4 mb-4 hidden">
+            <div class="bg-gray-50 rounded-lg p-4">
+                <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+                    <div class="flex items-center gap-2">
+                        <label class="font-semibold text-gray-700">Load Dataset:</label>
+                        <input type="file" id="dataset-upload" multiple accept=".json" 
+                               class="bg-white border border-gray-300 rounded-lg px-3 py-2 shadow-md text-sm">
+                    </div>
+                    <button id="load-dataset-btn" class="btn bg-blue-500 text-white font-bold px-4 py-2 rounded-lg shadow-lg">
+                        📁 Load Files
+                    </button>
+                </div>
+                <div class="text-center text-sm text-gray-600 mt-2">
+                    Upload the JSON files from your generated dataset (e.g., inputs.json, labels.json, etc.)
+                </div>
+            </div>
+            
+            <!-- Dataset Navigation -->
+            <div id="dataset-nav" class="hidden">
+                <div class="flex items-center justify-center gap-4 mb-4">
+                    <button id="prev-example-btn" class="btn bg-gray-500 text-white px-4 py-2 rounded-lg shadow-md">
+                        ← Previous
+                    </button>
+                    <div class="text-center">
+                        <span class="font-semibold">Example <span id="current-example">1</span> of <span id="total-examples">0</span></span>
+                        <div class="text-sm text-gray-600" id="example-metadata"></div>
+                    </div>
+                    <button id="next-example-btn" class="btn bg-gray-500 text-white px-4 py-2 rounded-lg shadow-md">
+                        Next →
+                    </button>
+                </div>
             </div>
         </div>
         
@@ -173,8 +238,26 @@
         </div>
 
         <!-- Canvas for visualization -->
-        <div class="canvas-container bg-gray-800 rounded-lg shadow-inner">
+        <div id="single-canvas-container" class="canvas-container bg-gray-800 rounded-lg shadow-inner">
              <canvas id="gameCanvas"></canvas>
+        </div>
+
+        <!-- Side-by-side canvas for dataset browsing -->
+        <div id="dual-canvas-container" class="hidden">
+            <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div class="bg-gray-800 rounded-lg shadow-inner p-4">
+                    <h3 class="text-white text-center font-semibold mb-2">Input (Map + Start/End)</h3>
+                    <div class="canvas-container">
+                        <canvas id="inputCanvas"></canvas>
+                    </div>
+                </div>
+                <div class="bg-gray-800 rounded-lg shadow-inner p-4">
+                    <h3 class="text-white text-center font-semibold mb-2">Output (Optimal Path)</h3>
+                    <div class="canvas-container">
+                        <canvas id="outputCanvas"></canvas>
+                    </div>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -215,7 +298,12 @@
         
         // --- DOM Elements ---
         const canvas = document.getElementById('gameCanvas');
+        const inputCanvas = document.getElementById('inputCanvas');
+        const outputCanvas = document.getElementById('outputCanvas');
         const ctx = canvas.getContext('2d');
+        const inputCtx = inputCanvas.getContext('2d');
+        const outputCtx = outputCanvas.getContext('2d');
+        
         const generateBtn = document.getElementById('generate-btn');
         const statusEl = document.getElementById('status');
         const difficultyButtons = document.getElementById('difficulty-buttons');
@@ -224,6 +312,27 @@
         const downloadDataBtn = document.getElementById('download-data-btn');
         const dataProgress = document.getElementById('data-progress');
         const progressText = document.getElementById('progress-text');
+
+        // Mode switching elements
+        const generateModeBtn = document.getElementById('generate-mode-btn');
+        const browseModeBtn = document.getElementById('browse-mode-btn');
+        const generateControls = document.getElementById('generate-controls');
+        const browseControls = document.getElementById('browse-controls');
+        const singleCanvasContainer = document.getElementById('single-canvas-container');
+        const dualCanvasContainer = document.getElementById('dual-canvas-container');
+
+        // Dataset browsing elements
+        const datasetUpload = document.getElementById('dataset-upload');
+        const loadDatasetBtn = document.getElementById('load-dataset-btn');
+        const datasetNav = document.getElementById('dataset-nav');
+        const prevExampleBtn = document.getElementById('prev-example-btn');
+        const nextExampleBtn = document.getElementById('next-example-btn');
+        const currentExampleSpan = document.getElementById('current-example');
+        const totalExamplesSpan = document.getElementById('total-examples');
+        const exampleMetadata = document.getElementById('example-metadata');
+        const showInputBtn = document.getElementById('show-input-btn');
+        const showOutputBtn = document.getElementById('show-output-btn');
+        const showBothBtn = document.getElementById('show-both-btn');
 
         // --- Game State ---
         let currentDifficulty = 'easy';
@@ -237,6 +346,173 @@
 
         // --- Data Collection for HRM Training ---
         let isCollectingData = false;
+
+        // --- Dataset Browsing State ---
+        let currentMode = 'generate'; // 'generate' or 'browse'
+        let loadedDataset = null;
+        let currentExampleIndex = 0;
+        let viewMode = 'both'; // 'input', 'output', or 'both'
+
+        // --- Mode Switching Functions ---
+        
+        function switchToGenerateMode() {
+            currentMode = 'generate';
+            generateModeBtn.classList.add('active', 'bg-blue-500', 'text-white');
+            generateModeBtn.classList.remove('text-gray-600');
+            browseModeBtn.classList.remove('active', 'bg-blue-500', 'text-white');
+            browseModeBtn.classList.add('text-gray-600');
+            
+            generateControls.classList.remove('hidden');
+            browseControls.classList.add('hidden');
+            singleCanvasContainer.classList.remove('hidden');
+            dualCanvasContainer.classList.add('hidden');
+            
+            statusEl.textContent = `🗽 Ready! Selected: ${VEHICLE_CONFIG[currentDifficulty].name}. Choose your time and find your route through NYC traffic.`;
+        }
+
+        function switchToBrowseMode() {
+            currentMode = 'browse';
+            browseModeBtn.classList.add('active', 'bg-blue-500', 'text-white');
+            browseModeBtn.classList.remove('text-gray-600');
+            generateModeBtn.classList.remove('active', 'bg-blue-500', 'text-white');
+            generateModeBtn.classList.add('text-gray-600');
+            
+            generateControls.classList.add('hidden');
+            browseControls.classList.remove('hidden');
+            singleCanvasContainer.classList.add('hidden');
+            dualCanvasContainer.classList.remove('hidden');
+            
+            statusEl.textContent = '📊 Browse Mode: Upload your generated dataset JSON files to inspect examples.';
+        }
+
+        // --- Dataset Loading Functions ---
+        
+        function loadDatasetFromFiles(files) {
+            const expectedFiles = [
+                'inputs.json',
+                'labels.json', 
+                'puzzle_identifiers.json',
+                'dataset.json'
+            ];
+            
+            const loadedFiles = {};
+            const filePromises = [];
+            
+            for (let file of files) {
+                const fileName = file.name;
+                const baseName = fileName.replace(/.*__/, ''); // Remove prefix like "nyc_routing_1000ex_train_all__"
+                
+                if (expectedFiles.includes(baseName) || baseName === 'dataset.json') {
+                    const promise = file.text().then(text => {
+                        loadedFiles[baseName] = JSON.parse(text);
+                    });
+                    filePromises.push(promise);
+                }
+            }
+            
+            return Promise.all(filePromises).then(() => {
+                if (!loadedFiles['inputs.json'] || !loadedFiles['labels.json']) {
+                    throw new Error('Missing required files: inputs.json and labels.json');
+                }
+                
+                loadedDataset = {
+                    inputs: loadedFiles['inputs.json'],
+                    labels: loadedFiles['labels.json'],
+                    puzzle_identifiers: loadedFiles['puzzle_identifiers.json'] || [],
+                    metadata: loadedFiles['dataset.json'] || {}
+                };
+                
+                currentExampleIndex = 0;
+                updateDatasetNavigation();
+                displayCurrentExample();
+                
+                return loadedDataset;
+            });
+        }
+
+        function updateDatasetNavigation() {
+            if (!loadedDataset) return;
+            
+            const totalExamples = loadedDataset.inputs.length;
+            currentExampleSpan.textContent = currentExampleIndex + 1;
+            totalExamplesSpan.textContent = totalExamples;
+            
+            prevExampleBtn.disabled = currentExampleIndex === 0;
+            nextExampleBtn.disabled = currentExampleIndex === totalExamples - 1;
+            
+            // Update metadata display
+            const currentInput = loadedDataset.inputs[currentExampleIndex];
+            if (currentInput) {
+                exampleMetadata.textContent = `Grid: 40x40 (${MAP_DIMENSIONS.width * MAP_DIMENSIONS.height} tokens)`;
+            }
+            
+            datasetNav.classList.remove('hidden');
+        }
+
+        function displayCurrentExample() {
+            if (!loadedDataset || currentExampleIndex >= loadedDataset.inputs.length) return;
+            
+            const inputData = loadedDataset.inputs[currentExampleIndex];
+            const outputData = loadedDataset.labels[currentExampleIndex];
+            
+            const inputGrid = decodeFromTokens(inputData);
+            const outputGrid = decodeFromTokens(outputData);
+            
+            if (viewMode === 'input' || viewMode === 'both') {
+                drawGridOnCanvas(inputCtx, inputGrid, 'input');
+            }
+            if (viewMode === 'output' || viewMode === 'both') {
+                drawGridOnCanvas(outputCtx, outputGrid, 'output');
+            }
+        }
+
+        function decodeFromTokens(tokens) {
+            const grid = [];
+            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
+                const row = [];
+                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
+                    const idx = y * MAP_DIMENSIONS.width + x;
+                    row.push(tokens[idx] || 0);
+                }
+                grid.push(row);
+            }
+            return grid;
+        }
+
+        function drawGridOnCanvas(context, grid, type) {
+            const canvasSize = Math.min(400, window.innerWidth / 3);
+            const canvas = context.canvas;
+            canvas.width = canvasSize;
+            canvas.height = canvasSize;
+            const tileSize = canvasSize / MAP_DIMENSIONS.width;
+            
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            
+            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
+                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
+                    const token = grid[y][x];
+                    let color;
+                    
+                    // Use your existing token-to-color mapping
+                    switch (token) {
+                        case 0: color = '#000000'; break; // PAD (black background)
+                        case 1: color = COLORS.OBSTACLE; break; // Buildings
+                        case 2: color = COLORS.SMALL_ROAD; break; // Side streets
+                        case 3: color = COLORS.LARGE_ROAD; break; // Major avenues
+                        case 4: color = '#a78bfa'; break; // Broadway
+                        case 5: color = COLORS.TRAFFIC_JAM; break; // Traffic jam
+                        case 6: color = COLORS.ROAD_CLOSURE; break; // Road closure
+                        case 7: color = COLORS.START; break; // Start point
+                        case 8: color = COLORS.END; break; // End point  
+                        case 9: color = COLORS.PATH; break; // Optimal path
+                        default: color = '#000000'; break;
+                    }
+                    
+                    context.fillStyle = color;
+                    context.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+                }
+            }
+        }
 
         // --- HRM-Compatible Dataset Generation ---
 
@@ -969,9 +1245,61 @@
             }
         }
 
+        function resizeAllCanvases() {
+            // Resize main canvas
+            const container = canvas.parentElement;
+            const containerSize = Math.min(container.clientWidth, container.clientHeight, 800);
+            
+            canvas.width = containerSize;
+            canvas.height = containerSize;
+            tileSize = containerSize / MAP_DIMENSIONS.width;
+            
+            // Resize dual canvases for dataset browsing
+            const datasetCanvasSize = Math.min(400, window.innerWidth / 3);
+            
+            if (inputCanvas) {
+                inputCanvas.width = datasetCanvasSize;
+                inputCanvas.height = datasetCanvasSize;
+            }
+            if (outputCanvas) {
+                outputCanvas.width = datasetCanvasSize;
+                outputCanvas.height = datasetCanvasSize;
+            }
+            
+            // Redraw everything
+            if (grid.length > 0 && !isAnimating) {
+                const dynamicGrid = addTraffic(grid);
+                drawMap(dynamicGrid);
+            }
+            
+            if (currentMode === 'browse' && loadedDataset) {
+                displayCurrentExample();
+            }
+        }
+
+        function updateViewModeButtons() {
+            // Reset all view mode buttons
+            [showInputBtn, showOutputBtn, showBothBtn].forEach(btn => {
+                btn.classList.remove('bg-green-600', 'bg-blue-600', 'bg-purple-600');
+                btn.classList.add('bg-green-500', 'bg-blue-500', 'bg-purple-500');
+            });
+            
+            // Highlight active button
+            if (viewMode === 'input') {
+                showInputBtn.classList.remove('bg-green-500');
+                showInputBtn.classList.add('bg-green-600');
+            } else if (viewMode === 'output') {
+                showOutputBtn.classList.remove('bg-blue-500');
+                showOutputBtn.classList.add('bg-blue-600');
+            } else if (viewMode === 'both') {
+                showBothBtn.classList.remove('bg-purple-500');
+                showBothBtn.classList.add('bg-purple-600');
+            }
+        }
+
         function init() {
             try {
-                resizeCanvas();
+                resizeAllCanvases();
                 
                 // Set initial active button style - reset all first, then set active
                 Array.from(difficultyButtons.children).forEach(btn => {
@@ -986,12 +1314,85 @@
                 }
                 
                 // Add event listeners
-                window.addEventListener('resize', resizeCanvas);
+                window.addEventListener('resize', resizeAllCanvases);
                 generateBtn.addEventListener('click', handleGenerate);
+                
+                // Keyboard navigation for dataset browsing
+                document.addEventListener('keydown', (e) => {
+                    if (currentMode === 'browse' && loadedDataset) {
+                        if (e.key === 'ArrowLeft' && currentExampleIndex > 0) {
+                            currentExampleIndex--;
+                            updateDatasetNavigation();
+                            displayCurrentExample();
+                        } else if (e.key === 'ArrowRight' && currentExampleIndex < loadedDataset.inputs.length - 1) {
+                            currentExampleIndex++;
+                            updateDatasetNavigation();
+                            displayCurrentExample();
+                        }
+                    }
+                });
+                
                 if (collectDataBtn) collectDataBtn.addEventListener('click', () => collectHRMTrainingData(1000));
                 if (downloadDataBtn) downloadDataBtn.addEventListener('click', downloadHRMTrainingData);
                 difficultyButtons.addEventListener('click', handleDifficultyChange);
                 timeSelector.addEventListener('change', handleTimeChange);
+                
+                // Mode switching event listeners
+                generateModeBtn.addEventListener('click', switchToGenerateMode);
+                browseModeBtn.addEventListener('click', switchToBrowseMode);
+                
+                // Dataset browsing event listeners
+                loadDatasetBtn.addEventListener('click', () => {
+                    const files = datasetUpload.files;
+                    if (files.length === 0) {
+                        alert('Please select dataset files first!');
+                        return;
+                    }
+                    
+                    statusEl.textContent = 'Loading dataset files...';
+                    loadDatasetFromFiles(files)
+                        .then(() => {
+                            statusEl.textContent = `✅ Loaded ${loadedDataset.inputs.length} examples successfully!`;
+                        })
+                        .catch(error => {
+                            console.error('Error loading dataset:', error);
+                            statusEl.textContent = `❌ Error loading dataset: ${error.message}`;
+                        });
+                });
+                
+                prevExampleBtn.addEventListener('click', () => {
+                    if (currentExampleIndex > 0) {
+                        currentExampleIndex--;
+                        updateDatasetNavigation();
+                        displayCurrentExample();
+                    }
+                });
+                
+                nextExampleBtn.addEventListener('click', () => {
+                    if (loadedDataset && currentExampleIndex < loadedDataset.inputs.length - 1) {
+                        currentExampleIndex++;
+                        updateDatasetNavigation();
+                        displayCurrentExample();
+                    }
+                });
+                
+                showInputBtn.addEventListener('click', () => {
+                    viewMode = 'input';
+                    updateViewModeButtons();
+                    displayCurrentExample();
+                });
+                
+                showOutputBtn.addEventListener('click', () => {
+                    viewMode = 'output';
+                    updateViewModeButtons();
+                    displayCurrentExample();
+                });
+                
+                showBothBtn.addEventListener('click', () => {
+                    viewMode = 'both';
+                    updateViewModeButtons();
+                    displayCurrentExample();
+                });
                 
                 // Generate initial map
                 statusEl.textContent = `🗽 Ready! Selected: ${VEHICLE_CONFIG[currentDifficulty].name}. Choose your time and find your route through NYC traffic.`;
