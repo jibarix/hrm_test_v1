@@ -15,64 +15,78 @@ data_path: data/logistics-routing-1k
 arch:
   name: hrm.hrm_act_v1@HierarchicalReasoningModel_ACTV1
   
-  # Loss configuration
+  # Loss configuration with comprehensive anti-cheating measures
   loss:
     name: losses@ACTLossHead
-    loss_type: stablemax_cross_entropy
+    loss_type: weighted_cross_entropy  # Use balanced loss
+    
+    # Token IDs (must match your HRM_TOKEN_MAP)
+    path_token_id: 9          # PATH token
+    start_token_id: 7         # START token  
+    end_token_id: 8           # END token
+    obstacle_token_id: 1      # OBSTACLE token
+    grid_width: 40            # Map dimensions
+    
+    # Loss weights
+    path_weight: 1000.0                 # 40x weight for path tokens (combat imbalance)
+    connectivity_weight: 50.0           # Penalty for disconnected paths
+    sparsity_penalty_weight: 100.0      # Disable for now (weighted loss should handle)
+    max_path_ratio: 0.1                # Cheat detection threshold
+    require_connectivity: true         # Require valid paths
 
   # ACT (Adaptive Computation Time) settings
   halt_exploration_prob: 0.1
-  halt_max_steps: 16             # Reduced from 16 to prevent overfitting
+  halt_max_steps: 16
 
-  # Hierarchical reasoning cycles (optimized for routing)
-  H_cycles: 2                    # High-level planning cycles
-  L_cycles: 4                    # Low-level execution cycles (increased for routing)
+  # Hierarchical reasoning cycles
+  H_cycles: 2
+  L_cycles: 4
 
-  # Transformer architecture
-  H_layers: 4                    # High-level module layers
-  L_layers: 4                    # Low-level module layers
-  hidden_size: 256               # Model dimension
-  num_heads: 4                   # Attention heads
-  expansion: 4                   # FFN expansion ratio
+  # Transformer architecture  
+  H_layers: 4
+  L_layers: 4
+  hidden_size: 256
+  num_heads: 4
+  expansion: 4
 
   # Embeddings
-  puzzle_emb_ndim: 256           # Same as hidden_size
+  puzzle_emb_ndim: 256
 
   # Position encodings
-  pos_encodings: rope           # Rotary position embeddings
-  rms_norm_eps: 1e-5            # RMSNorm epsilon
-  rope_theta: 10000.0           # RoPE base frequency
+  pos_encodings: rope
+  rms_norm_eps: 1e-5
+  rope_theta: 10000.0
 
   # Forward pass dtype
   forward_dtype: bfloat16
 
 # Training hyperparameters (laptop-optimized)
-global_batch_size: 32            # Conservative for 8GB VRAM
-epochs: 2000                     # Suitable for 1K dataset
-eval_interval: 100               # Frequent evaluation
-checkpoint_every_eval: true      # Save checkpoints at each eval
+global_batch_size: 32
+epochs: 2000
+eval_interval: 100
+checkpoint_every_eval: true
 
-# Learning rates (your proven values)
-lr: 1e-4                       # Main learning rate
-lr_min_ratio: 0.1              # LR decay to 10% of original
-lr_warmup_steps: 200            # Short warmup for small dataset
+# Learning rates
+lr: 1e-4
+lr_min_ratio: 0.1
+lr_warmup_steps: 200
 
-# Optimizer settings (Adam-like, as in paper)
-beta1: 0.9                      # Adam beta1
-beta2: 0.95                     # Adam beta2 (slightly higher than default)
+# Optimizer settings
+beta1: 0.9
+beta2: 0.95
 
-# Regularization (your strong regularization)
-weight_decay: 1.0               # Your value (vs default 0.1)
-puzzle_emb_weight_decay: 1.0    # Your value (vs default 0.1)
+# Regularization
+weight_decay: 1.0
+puzzle_emb_weight_decay: 1.0
 
 # Puzzle embedding learning rate
-puzzle_emb_lr: 1e-4             # Your value (vs default 1e-2)
+puzzle_emb_lr: 1e-4
 
 # Project and run naming
-project_name: null              # Auto-generate: "Logistics-routing-1k ACT-torch"
-run_name: null                  # Auto-generate: "HierarchicalReasoningModel_ACTV1 adjective-animal"
-checkpoint_path: null           # Auto-generate based on project/run names
+project_name: null
+run_name: null
+checkpoint_path: null
 
 # Experiment settings
-seed: 0                         # Reproducibility
-eval_save_outputs: ["inputs", "labels", "logits", "puzzle_identifiers"]  # Save for analysis
+seed: 0
+eval_save_outputs: ["inputs", "labels", "logits", "puzzle_identifiers"]
