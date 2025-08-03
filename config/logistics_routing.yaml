@@ -22,21 +22,21 @@ arch:
 
   # ACT (Adaptive Computation Time) settings
   halt_exploration_prob: 0.1
-  halt_max_steps: 2              # Reduced from 16 to prevent overfitting
+  halt_max_steps: 16             # Reduced from 16 to prevent overfitting
 
   # Hierarchical reasoning cycles (optimized for routing)
-  H_cycles: 1                    # High-level planning cycles
-  L_cycles: 1                    # Low-level execution cycles (increased for routing)
+  H_cycles: 2                    # High-level planning cycles
+  L_cycles: 4                    # Low-level execution cycles (increased for routing)
 
   # Transformer architecture
-  H_layers: 1                    # High-level module layers
-  L_layers: 1                    # Low-level module layers
-  hidden_size: 128               # Model dimension
-  num_heads: 2                   # Attention heads
-  expansion: 2                   # FFN expansion ratio
+  H_layers: 4                    # High-level module layers
+  L_layers: 4                    # Low-level module layers
+  hidden_size: 256               # Model dimension
+  num_heads: 4                   # Attention heads
+  expansion: 4                   # FFN expansion ratio
 
   # Embeddings
-  puzzle_emb_ndim: 128           # Same as hidden_size
+  puzzle_emb_ndim: 256           # Same as hidden_size
 
   # Position encodings
   pos_encodings: rope           # Rotary position embeddings
@@ -47,26 +47,26 @@ arch:
   forward_dtype: bfloat16
 
 # Training hyperparameters (laptop-optimized)
-global_batch_size: 256           # Conservative for 8GB VRAM
-epochs: 100                      # Suitable for 1K dataset
-eval_interval: 10                # Frequent evaluation
+global_batch_size: 32            # Conservative for 8GB VRAM
+epochs: 2000                     # Suitable for 1K dataset
+eval_interval: 100               # Frequent evaluation
 checkpoint_every_eval: true      # Save checkpoints at each eval
 
 # Learning rates (your proven values)
-lr: 5e-4                       # Main learning rate
-lr_min_ratio: 0.5              # LR decay to 10% of original
-lr_warmup_steps: 10            # Short warmup for small dataset
+lr: 1e-4                       # Main learning rate
+lr_min_ratio: 0.1              # LR decay to 10% of original
+lr_warmup_steps: 200            # Short warmup for small dataset
 
 # Optimizer settings (Adam-like, as in paper)
 beta1: 0.9                      # Adam beta1
 beta2: 0.95                     # Adam beta2 (slightly higher than default)
 
 # Regularization (your strong regularization)
-weight_decay: 0.1               # Your value (vs default 0.1)
-puzzle_emb_weight_decay: 0.1    # Your value (vs default 0.1)
+weight_decay: 1.0               # Your value (vs default 0.1)
+puzzle_emb_weight_decay: 1.0    # Your value (vs default 0.1)
 
 # Puzzle embedding learning rate
-puzzle_emb_lr: 5e-4             # Your value (vs default 1e-2)
+puzzle_emb_lr: 1e-4             # Your value (vs default 1e-2)
 
 # Project and run naming
 project_name: null              # Auto-generate: "Logistics-routing-1k ACT-torch"

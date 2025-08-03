@@ -1,0 +1,436 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HRM Logistics Routing - Live Evaluation</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+        .btn {
+            transition: all 0.2s ease-in-out;
+        }
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+        }
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        canvas {
+            image-rendering: pixelated;
+            image-rendering: crisp-edges;
+            border-radius: 0.5rem;
+            display: block;
+            margin: 0 auto;
+        }
+        .canvas-container {
+            width: 100%;
+            max-width: 800px;
+            aspect-ratio: 1;
+            margin: 0 auto;
+            position: relative;
+        }
+    </style>
+</head>
+<body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
+
+    <div class="w-full max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-4 sm:p-6">
+        <div class="text-center mb-4">
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">HRM Logistics Routing - Live Evaluation</h1>
+            <p class="text-gray-500 mt-1">Testing the trained Hierarchical Reasoning Model</p>
+        </div>
+
+        <!-- Evaluation Controls -->
+        <div id="eval-controls" class="flex flex-col gap-4 mb-4">
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <div class="flex items-center gap-2">
+                    <span class="font-semibold text-gray-700">Vehicle:</span>
+                    <div id="difficulty-buttons" class="flex flex-wrap gap-2">
+                        <button class="btn bg-gray-200 text-gray-800 px-4 py-2 rounded-lg shadow-md" data-difficulty="easy">🚲 Bike</button>
+                        <button class="btn bg-gray-200 text-gray-800 px-4 py-2 rounded-lg shadow-md" data-difficulty="normal">🚗 Car</button>
+                        <button class="btn bg-gray-200 text-gray-800 px-4 py-2 rounded-lg shadow-md" data-difficulty="hard">🚐 Van</button>
+                        <button class="btn bg-gray-200 text-gray-800 px-4 py-2 rounded-lg shadow-md" data-difficulty="expert">🚛 Truck</button>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="font-semibold text-gray-700">Time:</span>
+                    <select id="time-selector" class="bg-white border border-gray-300 rounded-lg px-3 py-2 shadow-md">
+                        <option value="6">6:00 AM - Early Morning</option>
+                        <option value="8" selected>8:00 AM - Rush Hour</option>
+                        <option value="12">12:00 PM - Lunch Hour</option>
+                        <option value="17">5:00 PM - Evening Rush</option>
+                        <option value="23">11:00 PM - Late Night</option>
+                    </select>
+                </div>
+            </div>
+            <div class="text-center">
+                <button id="generate-map-btn" class="btn bg-blue-500 text-white font-bold px-6 py-2 rounded-lg shadow-lg">
+                    🗺️ New Random Map
+                </button>
+                <button id="predict-btn" class="btn bg-green-500 text-white font-bold px-6 py-2 rounded-lg shadow-lg ml-2">
+                    🧠 Get HRM Prediction
+                </button>
+            </div>
+        </div>
+        
+        <p id="status" class="text-center text-gray-600 h-6 mb-4"></p>
+
+        <!-- Legend -->
+        <div class="bg-gray-50 rounded-lg p-4 mb-4">
+            <h3 class="text-lg font-semibold text-gray-800 mb-3 text-center">🗽 NYC Traffic Map Legend</h3>
+            <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #4a5568;"></div><span>Buildings/Park</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #d1d5db;"></div><span>Side Streets</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #9ca3af;"></div><span>Major Avenues</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #a78bfa;"></div><span>Broadway</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #f59e0b;"></div><span>Heavy Traffic</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #dc2626;"></div><span>Road Closure</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #10b981;"></div><span>Start Point</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #ef4444;"></div><span>Destination</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #3b82f6;"></div><span>Predicted Route</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded-full" style="background-color: #34d399;"></div><span>Vehicle</span></div>
+            </div>
+        </div>
+
+        <!-- Canvas for visualization -->
+        <div class="canvas-container bg-gray-800 rounded-lg shadow-inner">
+             <canvas id="gameCanvas"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        const MAP_DIMENSIONS = { width: 40, height: 40 };
+
+        const COLORS = {
+            OBSTACLE: '#4a5568',
+            SMALL_ROAD: '#d1d5db',
+            LARGE_ROAD: '#9ca3af',
+            TRAFFIC_JAM: '#f59e0b',
+            ROAD_CLOSURE: '#dc2626',
+            START: '#10b981',
+            END: '#ef4444',
+            PATH: '#3b82f6',
+            VEHICLE: {
+                easy: '#34d399',
+                normal: '#60a5fa',
+                hard: '#facc15',
+                expert: '#f87171',
+            }
+        };
+
+        const TILE_TYPES = {
+            OBSTACLE: 0,
+            SMALL_ROAD: 1,
+            LARGE_ROAD: 2,
+            BROADWAY: 3,
+        };
+
+        const VEHICLE_CONFIG = {
+            easy:   { name: 'Bike',   size: 1, allowed_roads: [TILE_TYPES.SMALL_ROAD, TILE_TYPES.LARGE_ROAD, TILE_TYPES.BROADWAY] },
+            normal: { name: 'Car',    size: 2, allowed_roads: [TILE_TYPES.SMALL_ROAD, TILE_TYPES.LARGE_ROAD, TILE_TYPES.BROADWAY] },
+            hard:   { name: 'Van',    size: 3, allowed_roads: [TILE_TYPES.LARGE_ROAD, TILE_TYPES.BROADWAY] },
+            expert: { name: 'Truck',  size: 4, allowed_roads: [TILE_TYPES.LARGE_ROAD] },
+        };
+        
+        // --- DOM Elements ---
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const predictBtn = document.getElementById('predict-btn');
+        const generateMapBtn = document.getElementById('generate-map-btn');
+        const statusEl = document.getElementById('status');
+        const difficultyButtons = document.getElementById('difficulty-buttons');
+        const timeSelector = document.getElementById('time-selector');
+
+        // --- Game State ---
+        let currentDifficulty = 'easy';
+        let currentHour = 8;
+        let grid = [];
+        let trafficGrid = [];
+        let startPos = null;
+        let endPos = null;
+        let isAnimating = false;
+        let tileSize = 1;
+
+        // --- HRM Tokenization ---
+        const HRM_TOKEN_MAP = {
+            PAD: 0, OBSTACLE: 1, SMALL_ROAD: 2, LARGE_ROAD: 3, BROADWAY: 4,
+            TRAFFIC_JAM: 5, ROAD_CLOSURE: 6, START: 7, END: 8, PATH: 9
+        };
+
+        function gridToHRMSequence(baseGrid, trafficGrid, startPos, endPos) {
+            const sequence = new Array(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height);
+            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
+                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
+                    const idx = y * MAP_DIMENSIONS.width + x;
+                    if (startPos && startPos.x === x && startPos.y === y) {
+                        sequence[idx] = HRM_TOKEN_MAP.START;
+                    } else if (endPos && endPos.x === x && endPos.y === y) {
+                        sequence[idx] = HRM_TOKEN_MAP.END;
+                    } else if (trafficGrid[y][x] === 'TRAFFIC_JAM') {
+                        sequence[idx] = HRM_TOKEN_MAP.TRAFFIC_JAM;
+                    } else if (trafficGrid[y][x] === 'ROAD_CLOSURE') {
+                        sequence[idx] = HRM_TOKEN_MAP.ROAD_CLOSURE;
+                    } else {
+                        switch (baseGrid[y][x]) {
+                            case TILE_TYPES.OBSTACLE: sequence[idx] = HRM_TOKEN_MAP.OBSTACLE; break;
+                            case TILE_TYPES.SMALL_ROAD: sequence[idx] = HRM_TOKEN_MAP.SMALL_ROAD; break;
+                            case TILE_TYPES.LARGE_ROAD: sequence[idx] = HRM_TOKEN_MAP.LARGE_ROAD; break;
+                            case TILE_TYPES.BROADWAY: sequence[idx] = HRM_TOKEN_MAP.BROADWAY; break;
+                            default: sequence[idx] = HRM_TOKEN_MAP.OBSTACLE;
+                        }
+                    }
+                }
+            }
+            return sequence;
+        }
+
+        function hrmSequenceToPath(sequence) {
+            const path = [];
+            for (let i = 0; i < sequence.length; i++) {
+                if (sequence[i] === HRM_TOKEN_MAP.PATH) {
+                    const y = Math.floor(i / MAP_DIMENSIONS.width);
+                    const x = i % MAP_DIMENSIONS.width;
+                    path.push({ x, y });
+                }
+            }
+            return path;
+        }
+
+        async function getHRMPrediction(inputSequence) {
+            statusEl.textContent = '🧠 HRM is thinking...';
+            predictBtn.disabled = true;
+
+            try {
+                // --- REAL-WORLD IMPLEMENTATION ---
+                // This now calls your local Python server.
+                const response = await fetch('http://127.0.0.1:5000/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ inputs: inputSequence })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Model server error: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                const predictedPathSequence = result.path;
+                // ---------------------------------
+
+                /*
+                // --- LOCAL SIMULATION (using A* oracle) - NOW COMMENTED OUT ---
+                await new Promise(resolve => setTimeout(resolve, 1000));
+                const vehicle = VEHICLE_CONFIG[currentDifficulty];
+                const oraclePath = solvePathAStar(trafficGrid, startPos, endPos, vehicle);
+                const predictedPathSequence = new Array(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height).fill(HRM_TOKEN_MAP.PAD);
+                for (const pos of oraclePath) {
+                    const idx = pos.y * MAP_DIMENSIONS.width + pos.x;
+                    predictedPathSequence[idx] = HRM_TOKEN_MAP.PATH;
+                }
+                */
+
+                predictBtn.disabled = false;
+                return hrmSequenceToPath(predictedPathSequence);
+
+            } catch (error) {
+                console.error("Error getting prediction:", error);
+                statusEl.textContent = "❌ Could not connect to model server. Is it running?";
+                predictBtn.disabled = false;
+                return []; // Return an empty path on error
+            }
+        }
+
+
+        // --- Core Functions (Map Generation, Drawing, A*) ---
+
+        function generateMap() {
+            grid = Array(MAP_DIMENSIONS.height).fill(null).map(() => Array(MAP_DIMENSIONS.width).fill(TILE_TYPES.OBSTACLE));
+            const avenues = [3, 8, 13, 18, 23, 28, 33, 37];
+            for (let avenue of avenues) {
+                for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
+                    if (avenue + 1 < MAP_DIMENSIONS.width) {
+                        grid[y][avenue] = TILE_TYPES.LARGE_ROAD;
+                        grid[y][avenue + 1] = TILE_TYPES.LARGE_ROAD;
+                    }
+                }
+            }
+            for (let y = 4; y < MAP_DIMENSIONS.height; y += 4) {
+                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
+                    if (grid[y][x] === TILE_TYPES.OBSTACLE) grid[y][x] = TILE_TYPES.SMALL_ROAD;
+                }
+            }
+            for (let i = 0; i < MAP_DIMENSIONS.width - 5; i++) {
+                const x = i, y = Math.floor((i * MAP_DIMENSIONS.height) / MAP_DIMENSIONS.width);
+                if (y + 1 < MAP_DIMENSIONS.height) {
+                    grid[y][x] = TILE_TYPES.BROADWAY;
+                    grid[y + 1][x] = TILE_TYPES.BROADWAY;
+                }
+            }
+            const parkStartX = Math.floor(MAP_DIMENSIONS.width * 0.4), parkEndX = Math.floor(MAP_DIMENSIONS.width * 0.65);
+            const parkStartY = Math.floor(MAP_DIMENSIONS.height * 0.15), parkEndY = Math.floor(MAP_DIMENSIONS.height * 0.45);
+            for (let y = parkStartY; y < parkEndY; y++) {
+                for (let x = parkStartX; x < parkEndX; x++) {
+                    grid[y][x] = TILE_TYPES.OBSTACLE;
+                }
+            }
+            placeStartAndEnd();
+            updateTrafficAndDraw();
+        }
+
+        function placeStartAndEnd() {
+            const roadPositions = [];
+            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
+                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
+                    if (grid[y][x] !== TILE_TYPES.OBSTACLE) roadPositions.push({ x, y });
+                }
+            }
+            if (roadPositions.length < 2) return;
+            let attempts = 0;
+            do {
+                startPos = roadPositions[Math.floor(Math.random() * roadPositions.length)];
+                endPos = roadPositions[Math.floor(Math.random() * roadPositions.length)];
+                attempts++;
+            } while (attempts < 50 && (Math.abs(startPos.x - endPos.x) + Math.abs(startPos.y - endPos.y) < 20));
+        }
+
+        function addTraffic(baseGrid, hour) {
+            let newTrafficGrid = baseGrid.map(row => [...row]);
+            let trafficIntensity = 0.1, constructionActive = false;
+            if (hour >= 7 && hour <= 9) trafficIntensity = 0.4;
+            else if (hour >= 17 && hour <= 19) trafficIntensity = 0.45;
+            else if (hour >= 12 && hour <= 13) trafficIntensity = 0.25;
+            else if (hour >= 2 && hour <= 5) constructionActive = true;
+
+            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
+                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
+                    const roadType = baseGrid[y][x];
+                    if (roadType === TILE_TYPES.LARGE_ROAD || roadType === TILE_TYPES.BROADWAY) {
+                        if (constructionActive && Math.random() < 0.05) newTrafficGrid[y][x] = 'ROAD_CLOSURE';
+                        else if (Math.random() < trafficIntensity) newTrafficGrid[y][x] = 'TRAFFIC_JAM';
+                    }
+                }
+            }
+            return newTrafficGrid;
+        }
+
+        function updateTrafficAndDraw() {
+            trafficGrid = addTraffic(grid, currentHour);
+            drawMap(trafficGrid);
+        }
+
+        function drawMap(dynamicGrid, path = []) {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
+                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
+                    let color;
+                    switch (dynamicGrid[y][x]) {
+                        case TILE_TYPES.OBSTACLE: color = COLORS.OBSTACLE; break;
+                        case TILE_TYPES.SMALL_ROAD: color = COLORS.SMALL_ROAD; break;
+                        case TILE_TYPES.LARGE_ROAD: color = COLORS.LARGE_ROAD; break;
+                        case TILE_TYPES.BROADWAY: color = '#a78bfa'; break;
+                        case 'TRAFFIC_JAM': color = COLORS.TRAFFIC_JAM; break;
+                        case 'ROAD_CLOSURE': color = COLORS.ROAD_CLOSURE; break;
+                        default: color = COLORS.OBSTACLE;
+                    }
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+                }
+            }
+            if (path.length > 0) {
+                ctx.fillStyle = COLORS.PATH;
+                path.forEach(p => ctx.fillRect(p.x * tileSize, p.y * tileSize, tileSize, tileSize));
+            }
+            if (startPos) {
+                ctx.fillStyle = COLORS.START;
+                ctx.fillRect(startPos.x * tileSize, startPos.y * tileSize, tileSize, tileSize);
+            }
+            if (endPos) {
+                ctx.fillStyle = COLORS.END;
+                ctx.fillRect(endPos.x * tileSize, endPos.y * tileSize, tileSize, tileSize);
+            }
+        }
+
+        function animateVehicle(path) {
+            if (path.length === 0) {
+                statusEl.textContent = '⚠️ HRM could not find a route!';
+                return;
+            }
+            isAnimating = true;
+            let step = 0;
+            function animationLoop() {
+                if (step >= path.length) {
+                    isAnimating = false;
+                    statusEl.textContent = `🎯 Arrived! Route found with ${path.length} steps.`;
+                    return;
+                }
+                drawMap(trafficGrid, path.slice(0, step + 1));
+                const currentPos = path[step];
+                ctx.fillStyle = COLORS.VEHICLE[currentDifficulty];
+                ctx.beginPath();
+                ctx.arc(currentPos.x * tileSize + tileSize / 2, currentPos.y * tileSize + tileSize / 2, tileSize / 2 * 0.8, 0, 2 * Math.PI);
+                ctx.fill();
+                step++;
+                setTimeout(() => { if (isAnimating) requestAnimationFrame(animationLoop); }, 50);
+            }
+            animationLoop();
+        }
+        
+        // --- Event Handlers & Initialization ---
+        async function handlePredict() {
+            if (isAnimating) return;
+            const inputSequence = gridToHRMSequence(grid, trafficGrid, startPos, endPos);
+            const predictedPath = await getHRMPrediction(inputSequence);
+            animateVehicle(predictedPath);
+        }
+        
+        function handleDifficultyChange(e) {
+            if (e.target.tagName !== 'BUTTON') return;
+            currentDifficulty = e.target.dataset.difficulty;
+            Array.from(difficultyButtons.children).forEach(btn => {
+                btn.classList.remove('bg-blue-500', 'text-white');
+                btn.classList.add('bg-gray-200', 'text-gray-800');
+            });
+            e.target.classList.add('bg-blue-500', 'text-white');
+            statusEl.textContent = `Selected: ${VEHICLE_CONFIG[currentDifficulty].name}.`;
+        }
+
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            const size = Math.min(container.clientWidth, 800);
+            canvas.width = size;
+            canvas.height = size;
+            tileSize = size / MAP_DIMENSIONS.width;
+            if (grid.length > 0) updateTrafficAndDraw();
+        }
+
+        function init() {
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            predictBtn.addEventListener('click', handlePredict);
+            generateMapBtn.addEventListener('click', () => {
+                if(isAnimating) return;
+                generateMap();
+                statusEl.textContent = 'New map generated. Ready for HRM prediction.';
+            });
+            difficultyButtons.addEventListener('click', handleDifficultyChange);
+            timeSelector.addEventListener('change', () => {
+                currentHour = parseInt(timeSelector.value);
+                if(grid.length > 0 && !isAnimating) updateTrafficAndDraw();
+            });
+            
+            // Set initial active button
+            difficultyButtons.querySelector(`[data-difficulty="${currentDifficulty}"]`).classList.add('bg-blue-500', 'text-white');
+            generateMap();
+            statusEl.textContent = 'Ready for HRM evaluation. Click "Get HRM Prediction".';
+        }
+
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
