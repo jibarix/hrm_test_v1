@@ -1,6 +1,7 @@
-# Complete Enhanced logistics_routing.yaml with Curriculum Anti-Cheat Schedule
-# Compatible with enhanced losses.py, hrm_act_v1.py, and pretrain.py
-# Optimized for RTX 3070 Ti (8GB VRAM) + Windows 11 + SDPA
+# Complete laptop-optimized config for Simple Pathfinding
+# Hardware: RTX 3070 Ti Laptop (8GB VRAM)  
+# Dataset: 1000 examples, 6-token system
+# WITH SPATIAL CONNECTIVITY FIX
 
 defaults:
   - _self_
@@ -8,302 +9,111 @@ defaults:
 hydra:
   output_subdir: null
 
-# Data path
-data_path: data/logistics-routing-1k
+# Data path (updated for simplified pathfinding)
+data_path: data/simple-pathfinding-1k
 
-# ========================================================================
-# CURRICULUM LEARNING SYSTEM: 5-Stage Progressive Anti-Cheat Schedule
-# ========================================================================
+# Architecture
 arch:
   name: hrm.hrm_act_v1@HierarchicalReasoningModel_ACTV1
   
-  # ENABLE CURRICULUM LEARNING
-  curriculum_learning: true
-  warmup_steps: 100                              # Steps of free exploration
-  max_consecutive_rejections: 25                 # Higher tolerance during transitions
-  
-  # 5-STAGE CURRICULUM PROGRESSION
-  curriculum_stages:
-    # ====================================================================
-    # STAGE 1: Basic Exploration (Steps 500-1000)
-    # Goal: Learn basic grid→path mapping without constraints
-    # ====================================================================
-    - start_step: 500
-      stage_name: "exploration"
-      max_path_ratio: 0.80                       # Allow 80% of grid as paths
-      path_weight: 10.0                          # Light penalty (vs 1000x final)
-      connectivity_weight: 0.0                   # No connectivity required yet
-      sparsity_penalty_weight: 0.0               # No sparsity penalty
-      require_connectivity: false                # Don't require start→end connection
-      enable_batch_rejection: false              # No rejections during exploration
-      budget_loss_weight: 0.0                    # No direct supervision yet
-      coverage_penalty_weight: 0.0               # No coverage penalty yet
-      
-      # ACT parameters - very relaxed
-      act_validity_gating: false                 # No validity gating yet
-      min_connectivity_for_reward: 0.0           # No connectivity requirement
-      min_valid_path_ratio: 0.5                  # Very low bar for validity
-    
-    # ====================================================================
-    # STAGE 2: Initial Constraints (Steps 1000-2000) 
-    # Goal: Introduce basic sparsity and light penalties
-    # ====================================================================
-    - start_step: 1000
-      stage_name: "initial_constraints"
-      max_path_ratio: 0.50                       # Tighten to 50% paths
-      path_weight: 100.0                         # 10x stronger penalty
-      connectivity_weight: 1.0                   # Light connectivity penalty
-      sparsity_penalty_weight: 5.0               # Light sparsity penalty
-      require_connectivity: false                # Still not requiring connection
-      enable_batch_rejection: false              # Still no rejections
-      budget_loss_weight: 1.0                    # Light direct supervision
-      coverage_penalty_weight: 0.5               # Light coverage penalty
-      
-      # ACT parameters - slightly tighter
-      act_validity_gating: false                 # No validity gating yet
-      min_connectivity_for_reward: 0.2           # Very low connectivity bar
-      min_valid_path_ratio: 0.7                  # Moderate validity requirement
-    
-    # ====================================================================
-    # STAGE 3: Connectivity Learning (Steps 2000-3000)
-    # Goal: Start requiring basic connectivity while maintaining flexibility
-    # ====================================================================
-    - start_step: 2000
-      stage_name: "connectivity_learning" 
-      max_path_ratio: 0.35                       # Further tighten to 35%
-      path_weight: 300.0                         # Stronger penalty
-      connectivity_weight: 10.0                  # Strong connectivity requirement
-      sparsity_penalty_weight: 20.0              # Moderate sparsity penalty
-      require_connectivity: true                 # NOW require start→end connection
-      enable_batch_rejection: false              # Still no rejections (learning phase)
-      budget_loss_weight: 5.0                    # Moderate direct supervision
-      coverage_penalty_weight: 2.0               # Moderate coverage penalty
-      
-      # ACT parameters - getting stricter
-      act_validity_gating: true                  # Enable validity gating
-      min_connectivity_for_reward: 0.4           # Moderate connectivity requirement
-      min_valid_path_ratio: 0.85                 # Higher validity requirement
-    
-    # ====================================================================
-    # STAGE 4: Strong Constraints (Steps 3000-4000)
-    # Goal: Approach final constraint levels while still allowing learning
-    # ====================================================================
-    - start_step: 3000
-      stage_name: "strong_constraints"
-      max_path_ratio: 0.25                       # Tighten to 25%
-      path_weight: 600.0                         # Strong penalty
-      connectivity_weight: 30.0                  # Strong connectivity requirement
-      sparsity_penalty_weight: 50.0              # Strong sparsity penalty
-      require_connectivity: true                 # Require start→end connection
-      enable_batch_rejection: false              # Last stage before rejections
-      budget_loss_weight: 8.0                    # Strong direct supervision
-      coverage_penalty_weight: 4.0               # Strong coverage penalty
-      
-      # ACT parameters - strict but not final
-      act_validity_gating: true                  # Enable validity gating
-      min_connectivity_for_reward: 0.6           # High connectivity requirement
-      min_valid_path_ratio: 0.90                 # High validity requirement
-    
-    # ====================================================================
-    # STAGE 5: Final Training (Steps 4000+)
-    # Goal: Full constraint enforcement with rejection capability
-    # ====================================================================
-    - start_step: 4000
-      stage_name: "final_training"
-      max_path_ratio: 0.20                       # Final tight constraint (20%)
-      path_weight: 1000.0                        # Full penalty weight
-      connectivity_weight: 50.0                  # Full connectivity requirement
-      sparsity_penalty_weight: 100.0             # Full sparsity penalty
-      require_connectivity: true                 # Full connectivity requirement
-      enable_batch_rejection: true               # ENABLE rejections at final stage
-      budget_loss_weight: 10.0                   # Full direct supervision
-      coverage_penalty_weight: 5.0               # Full coverage penalty
-      
-      # ACT parameters - final strict settings
-      act_validity_gating: true                  # Full validity gating
-      min_connectivity_for_reward: 0.8           # High connectivity requirement
-      min_valid_path_ratio: 0.95                 # High validity requirement
-
-  # ========================================================================
-  # ENHANCED LOSS CONFIGURATION (Compatible with Curriculum System)
-  # ========================================================================
+  # Loss configuration WITH SPATIAL FIX
   loss:
     name: losses@ACTLossHead
-    loss_type: weighted_cross_entropy
+    loss_type: stablemax_cross_entropy
     
-    # Token IDs (must match HRM_TOKEN_MAP in game)
-    path_token_id: 9
-    start_token_id: 7
-    end_token_id: 8
-    obstacle_token_id: 1
-    grid_width: 40
+    # SPATIAL CONNECTIVITY FIX - Core parameters
+    enable_spatial_loss: true          # Enable the fundamental spatial fix
+    spatial_penalty_weight: 10.0       # Penalty strength for impossible spatial jumps
+    enable_connectivity_loss: false    # Start simple - disable additional connectivity check
+    connectivity_weight: 5.0           # (unused when connectivity disabled)
     
-    # INITIAL VALUES (will be overridden by curriculum stages)
-    path_weight: 10.0                            # Starting light penalty
-    max_path_ratio: 0.80                         # Starting permissive ratio
-    connectivity_weight: 0.0                     # Starting with no connectivity
-    sparsity_penalty_weight: 0.0                # Starting with no sparsity penalty
-    require_connectivity: false                  # Starting without connectivity requirement
-    
-    # Direct supervision losses (curriculum-controlled)
-    budget_loss_weight: 0.0                      # Start disabled, enable in curriculum
-    coverage_penalty_weight: 0.0                # Start disabled, enable in curriculum
-    
-    # Structured projection (disabled due to bfloat16 compatibility)
-    structured_projection_weight: 0.0            # Keep disabled
-    enable_projection: false                     # Keep disabled for stability
-    
-    # ACT validity gating (curriculum-controlled)
-    act_validity_gating: false                   # Start disabled, enable in curriculum
-    min_connectivity_for_reward: 0.0             # Start permissive, tighten in curriculum
-    min_valid_path_ratio: 0.5                    # Start permissive, tighten in curriculum
+    # Grid and token configuration (simplified 6-token system)
+    grid_width: 40                     # 40×40 grid dimensions
+    path_token_id: 6                   # PATH token in simplified system
 
-  # ========================================================================
-  # ACT (Adaptive Computation Time) Settings
-  # ========================================================================
-  halt_exploration_prob: 0.15                   # Moderate exploration probability
-  halt_max_steps: 12                           # Reasonable max steps for complexity
+  # ACT (Adaptive Computation Time) settings
+  halt_exploration_prob: 0.1           # Standard exploration probability
+  halt_max_steps: 16                   # Max reasoning steps
 
-  # ========================================================================
-  # HIERARCHICAL REASONING ARCHITECTURE
-  # ========================================================================
-  H_cycles: 2                                   # High-level reasoning cycles
-  L_cycles: 4                                   # Low-level reasoning cycles
+  # Hierarchical reasoning cycles
+  H_cycles: 2                          # High-level planning cycles
+  L_cycles: 4                          # Low-level execution cycles
 
-  # Transformer Architecture (RTX 3070 Ti Optimized)
-  H_layers: 4                                   # High-level transformer layers
-  L_layers: 4                                   # Low-level transformer layers  
-  hidden_size: 256                              # Hidden dimension (reduced for 8GB VRAM)
-  num_heads: 4                                  # Attention heads (reduced for efficiency)
-  expansion: 4                                  # MLP expansion factor
+  # Transformer architecture (laptop-optimized)
+  H_layers: 4                          # High-level module layers
+  L_layers: 4                          # Low-level module layers
+  hidden_size: 256                     # Model dimension (reduced for 8GB VRAM)
+  num_heads: 4                         # Attention heads (reduced for efficiency)
+  expansion: 4                         # FFN expansion ratio
 
   # Embeddings
-  puzzle_emb_ndim: 256                          # Puzzle embedding dimension
-  pos_encodings: rope                           # Rotary position encodings
-  rms_norm_eps: 1e-5                           # RMS norm epsilon
-  rope_theta: 10000.0                          # RoPE theta parameter
+  puzzle_emb_ndim: 256                 # Same as hidden_size
 
-  # Forward pass settings (Windows + SDPA optimized)
-  forward_dtype: bfloat16                       # Mixed precision training
+  # Position encodings
+  pos_encodings: rope                  # Rotary position embeddings
+  rms_norm_eps: 1e-5                   # RMSNorm epsilon
+  rope_theta: 10000.0                  # RoPE base frequency
 
-# ========================================================================
-# TRAINING HYPERPARAMETERS (Curriculum + Hardware Optimized)
-# ========================================================================
+  # Forward pass dtype
+  forward_dtype: bfloat16              # Mixed precision training
 
-# Batch size and training duration (extended for curriculum)
-global_batch_size: 64                          # Conservative for 8GB VRAM
-epochs: 2000                                   # Extended for full curriculum (was 2000)
-eval_interval: 100                             # Evaluate every 200 epochs
-checkpoint_every_eval: true                    # Save checkpoints at each eval
+# Training hyperparameters (laptop-optimized)
+global_batch_size: 32                 # Conservative for 8GB VRAM
+epochs: 2000                          # Suitable for 1K dataset
+eval_interval: 100                    # Frequent evaluation for debugging
+checkpoint_every_eval: true           # Save checkpoints at each eval
 
-# Learning rates (curriculum-friendly)
-lr: 1e-4                                       # Standard learning rate
-lr_min_ratio: 0.1                             # Minimum LR as fraction of max
-lr_warmup_steps: 300                          # Extended warmup for curriculum
+# Learning rates
+lr: 1e-4                              # Main learning rate
+lr_min_ratio: 0.1                     # LR decay to 10% of original
+lr_warmup_steps: 200                  # Short warmup for small dataset
 
-# Optimizer settings (AdamW-style)
-beta1: 0.9                                     # Adam beta1
-beta2: 0.95                                    # Adam beta2  
-weight_decay: 1.0                              # L2 regularization
-puzzle_emb_weight_decay: 1.0                   # Puzzle embedding regularization
+# Optimizer settings (Adam-like, as in paper)
+beta1: 0.9                            # Adam beta1
+beta2: 0.95                           # Adam beta2 (slightly higher than default)
+
+# Regularization
+weight_decay: 1.0                     # Strong regularization for small dataset
+puzzle_emb_weight_decay: 1.0          # Strong puzzle embedding regularization
 
 # Puzzle embedding learning rate
-puzzle_emb_lr: 1e-4                            # Separate LR for puzzle embeddings
+puzzle_emb_lr: 1e-4                   # Same as main LR for simplicity
 
-# ========================================================================
-# BATCH REJECTION SYSTEM (Curriculum-Aware)
-# ========================================================================
-enable_batch_rejection: true                   # Enable enhanced rejection system
-max_consecutive_rejections: 25                 # Higher tolerance for curriculum transitions
-rejection_path_ratio_threshold: 0.25           # Conservative rejection threshold
-
-# ========================================================================
-# LOGGING & MONITORING
-# ========================================================================
-project_name: null                             # Will auto-generate if null
-run_name: "curriculum-logistics-routing"       # Descriptive run name
-checkpoint_path: null                          # Will auto-generate if null
+# Project and run naming (updated for simplified pathfinding)
+project_name: null                    # Auto-generate: "Simple-pathfinding-1k ACT-torch"
+run_name: null                        # Auto-generate: "HierarchicalReasoningModel_ACTV1 adjective-animal"
+checkpoint_path: null                 # Auto-generate based on project/run names
 
 # Experiment settings
-seed: 42                                       # Fixed seed for reproducibility
-eval_save_outputs: ["inputs", "labels", "logits", "puzzle_identifiers"]
+seed: 0                               # Reproducibility
+eval_save_outputs: ["inputs", "labels", "logits", "puzzle_identifiers"]  # Save for analysis
 
 # ========================================================================
-# HARDWARE OPTIMIZATION NOTES
+# SPATIAL FIX VALIDATION NOTES
 # ========================================================================
-# This configuration is specifically optimized for:
-# - RTX 3070 Ti Laptop (8GB VRAM)
-# - Windows 11 with SDPA (no FlashAttention)
-# - Small dataset (1000 examples)
-# - Curriculum learning over 6000 epochs (~5000 steps)
+# Key metrics to monitor for spatial fix validation:
 #
-# Memory usage breakdown:
-# - Model parameters: ~27M params × 2 bytes (bfloat16) = ~54MB
-# - Activations: ~32 batch × 1600 seq × 256 hidden × 2 bytes = ~26MB
-# - Gradients: ~54MB (same as parameters)
-# - Total: ~134MB core usage, leaving plenty of room for SDPA and caching
+# SUCCESS INDICATORS:
+# - train/spatial_loss: Should decrease over time (model learning 2D constraints)
+# - train/exact_accuracy: Should increase without path_ratio=1.0 cheating  
+# - train/path_ratio: Should stay reasonable (<0.3), not spam entire grid
+# - train/steps: Should show reasonable ACT step usage
 #
-# For more powerful hardware, consider:
-# - global_batch_size: 64-128
-# - hidden_size: 512
-# - num_heads: 8
-# - H_layers: 6, L_layers: 6
-
+# FAILURE INDICATORS:  
+# - train/spatial_loss: Stays high (model not learning spatial constraints)
+# - train/exact_accuracy: Stays at 0% (fundamental learning failure)
+# - train/path_ratio: Goes to 1.0 (reverting to cheating behavior)
+# - Loss explosion or training instability
+#
+# DEBUGGING:
+# - If spatial_loss is too high, reduce spatial_penalty_weight to 5.0
+# - If model still cheats, increase spatial_penalty_weight to 20.0
+# - If training is unstable, reduce lr to 5e-5
+# - Enable connectivity_loss if spatial fix alone isn't sufficient
+#
+# Expected training progression with spatial fix:
+# - Steps 0-500: High spatial_loss as model learns constraints
+# - Steps 500-1000: Spatial_loss decreases, accuracy starts improving
+# - Steps 1000-1500: Breakthrough - exact_accuracy jumps to >10%
+# - Steps 1500+: Continued improvement with stable spatial behavior
 # ========================================================================
-# CURRICULUM LEARNING PHILOSOPHY
-# ========================================================================
-# This curriculum follows the principle of "scaffolded learning":
-#
-# 1. EXPLORATION PHASE (0-1000 steps):
-#    - Model learns basic grid→path relationships
-#    - No constraints allow creative exploration
-#    - Light penalties guide toward better solutions
-#
-# 2. CONSTRAINT INTRODUCTION (1000-3000 steps):  
-#    - Gradually introduce sparsity requirements
-#    - Slowly add connectivity requirements
-#    - Progressive penalty scaling
-#
-# 3. MASTERY PHASE (3000-4000+ steps):
-#    - Full constraint enforcement
-#    - Rejection system active
-#    - Model must demonstrate true pathfinding capability
-#
-# Expected learning progression:
-# - Steps 0-500: Random exploration, path_ratio ~1.0
-# - Steps 500-1000: Basic learning, path_ratio ~0.8-0.6
-# - Steps 1000-2000: Constraint adaptation, path_ratio ~0.5-0.4
-# - Steps 2000-3000: Connectivity learning, start_end_connectivity ~0.2-0.6
-# - Steps 3000-4000: Near-mastery, start_end_connectivity ~0.6-0.8
-# - Steps 4000+: Expert performance, all metrics optimized
-#
-# This approach prevents the "rejection loop" problem by allowing the model
-# to learn incrementally rather than facing all constraints simultaneously.
-
-# ========================================================================
-# TROUBLESHOOTING GUIDE
-# ========================================================================
-# If training still gets stuck:
-#
-# 1. EXTEND WARMUP:
-#    warmup_steps: 1000  # Double the warmup period
-#
-# 2. SLOWER PROGRESSION:
-#    - start_step: 1000 → 1500
-#    - start_step: 2000 → 3000  
-#    - start_step: 3000 → 4500
-#    - start_step: 4000 → 6000
-#
-# 3. GENTLER CONSTRAINTS:
-#    - max_path_ratio: 0.50 → 0.60
-#    - path_weight: 100.0 → 50.0
-#    - enable_batch_rejection: false (keep disabled longer)
-#
-# 4. REDUCE MODEL COMPLEXITY:
-#    - hidden_size: 256 → 128
-#    - H_layers/L_layers: 4 → 3
-#    - halt_max_steps: 12 → 8
-#
-# 5. INCREASE LEARNING RATE:
-#    - lr: 1e-4 → 2e-4
-#    - puzzle_emb_lr: 1e-4 → 2e-4
