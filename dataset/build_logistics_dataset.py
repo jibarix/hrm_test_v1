@@ -17,35 +17,52 @@ class DataProcessConfig(BaseModel):
     
 def convert_dataset(config: DataProcessConfig):
     # Read the JSON files we generated
-    inputs = json.load(open(f"{config.source_dir}/nyc_routing_1000ex_train_all__inputs.json"))
-    labels = json.load(open(f"{config.source_dir}/nyc_routing_1000ex_train_all__labels.json"))
-    puzzle_identifiers = json.load(open(f"{config.source_dir}/nyc_routing_1000ex_train_all__puzzle_identifiers.json"))
-    puzzle_indices = json.load(open(f"{config.source_dir}/nyc_routing_1000ex_train_all__puzzle_indices.json"))
-    group_indices = json.load(open(f"{config.source_dir}/nyc_routing_1000ex_train_all__group_indices.json"))
+    inputs_data = json.load(open(f"{config.source_dir}/nyc_routing_1000ex_train_all__inputs.json"))
+    labels_data = json.load(open(f"{config.source_dir}/nyc_routing_1000ex_train_all__labels.json"))
+    puzzle_identifiers_data = json.load(open(f"{config.source_dir}/nyc_routing_1000ex_train_all__puzzle_identifiers.json"))
+    puzzle_indices_data = json.load(open(f"{config.source_dir}/nyc_routing_1000ex_train_all__puzzle_indices.json"))
+    group_indices_data = json.load(open(f"{config.source_dir}/nyc_routing_1000ex_train_all__group_indices.json"))
     metadata = json.load(open(f"{config.source_dir}/nyc_routing_1000ex_train_dataset.json"))
     
     # Convert to numpy arrays
     data = {
-        "inputs": np.array(inputs, dtype=np.int32),
-        "labels": np.array(labels, dtype=np.int32),  
-        "puzzle_identifiers": np.array(puzzle_identifiers, dtype=np.int32),
-        "puzzle_indices": np.array(puzzle_indices, dtype=np.int32),
-        "group_indices": np.array(group_indices, dtype=np.int32)
+        "inputs": np.array(inputs_data, dtype=np.int32),
+        "labels": np.array(labels_data, dtype=np.int32),  
+        "puzzle_identifiers": np.array(puzzle_identifiers_data, dtype=np.int32),
+        "puzzle_indices": np.array(puzzle_indices_data, dtype=np.int32),
+        "group_indices": np.array(group_indices_data, dtype=np.int32)
     }
     
     # Create train/test split (80/20)
-    split_idx = int(0.8 * len(data["inputs"]))
+    num_examples = len(data["inputs"])
+    split_idx = int(0.8 * num_examples)
     
-    for split_name, start_idx, end_idx in [("train", 0, split_idx), ("test", split_idx, len(data["inputs"]))]:
+    # Determine the puzzle index where the split occurs
+    puzzle_split_idx = np.searchsorted(data["puzzle_indices"], split_idx, side='right')
+    
+    # Ensure groups are not split across train/test
+    group_split_idx = np.searchsorted(data["group_indices"], puzzle_split_idx, side='right')
+
+    for split_name, start_puzzle, end_puzzle in [("train", 0, puzzle_split_idx), ("test", puzzle_split_idx, len(data["puzzle_identifiers"]))]:
         save_dir = os.path.join(config.output_dir, split_name)
         os.makedirs(save_dir, exist_ok=True)
         
+        start_example = data["puzzle_indices"][start_puzzle]
+        end_example = data["puzzle_indices"][end_puzzle]
+
         # Slice data for this split
-        split_data = {k: v[start_idx:end_idx] for k, v in data.items() if k not in ["puzzle_indices", "group_indices"]}
+        split_data = {
+            "inputs": data["inputs"][start_example:end_example],
+            "labels": data["labels"][start_example:end_example],
+            "puzzle_identifiers": data["puzzle_identifiers"][start_puzzle:end_puzzle]
+        }
         
         # Adjust indices
-        split_data["puzzle_indices"] = data["puzzle_indices"] - start_idx
-        split_data["group_indices"] = data["group_indices"] - start_idx
+        split_data["puzzle_indices"] = data["puzzle_indices"][start_puzzle:end_puzzle+1] - start_example
+        
+        start_group = np.searchsorted(data["group_indices"], start_puzzle, side='right')-1
+        end_group = np.searchsorted(data["group_indices"], end_puzzle, side='right')-1
+        split_data["group_indices"] = data["group_indices"][start_group:end_group+1] - start_puzzle
         
         # Save .npy files
         for k, v in split_data.items():
