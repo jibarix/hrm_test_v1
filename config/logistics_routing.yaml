@@ -1,0 +1,37 @@
+# Data
+data_path: data/logistics-routing-1k
+
+# Architecture  
+arch:
+  name: HRMModel
+  loss:
+    name: ACTLossHead
+    loss_type: stablemax_cross_entropy
+  
+  # HRM-specific params
+  L_cycles: 4
+  halt_max_steps: 8
+  d_model: 512
+  d_ff: 2048
+  n_layers: 8
+
+# Training hyperparameters
+global_batch_size: 384
+epochs: 10000
+eval_interval: 1000
+
+# Learning rates
+lr: 1e-4
+puzzle_emb_lr: 1e-4
+lr_min_ratio: 0.1
+lr_warmup_steps: 100
+
+# Regularization
+weight_decay: 1.0
+puzzle_emb_weight_decay: 1.0
+beta1: 0.9
+beta2: 0.999
+
+# Logging
+checkpoint_every_eval: true
+eval_save_outputs: ["labels", "predictions"]
