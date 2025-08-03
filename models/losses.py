@@ -221,10 +221,6 @@ def compute_valid_path_ratio(predicted_tokens, labels, path_token_id=9, obstacle
     return sum(valid_ratios) / len(valid_ratios) if valid_ratios else 0.0
 
 
-# ============================================================================
-# NEW: Enhanced Anti-Cheat Loss Functions
-# ============================================================================
-
 def compute_path_budget_loss(predicted_tokens, labels, path_token_id=9, grid_size=1600):
     """
     Direct supervision on path token count - match predicted vs true path length
@@ -265,145 +261,6 @@ def compute_coverage_penalty(predicted_tokens, labels, path_token_id=9):
     return over_coverage_ratio.mean()
 
 
-def extract_positions_from_tokens(tokens, token_id, grid_width=40):
-    """Extract 2D positions of specific tokens from flattened sequence"""
-    positions = []
-    batch_size = tokens.shape[0]
-    
-    for b in range(batch_size):
-        token_positions = (tokens[b] == token_id).nonzero().squeeze(-1)
-        if len(token_positions) > 0:
-            # Convert flat indices to 2D coordinates
-            first_pos = token_positions[0].item()
-            row = first_pos // grid_width
-            col = first_pos % grid_width
-            positions.append([row, col])
-        else:
-            positions.append([0, 0])  # Fallback
-    
-    return torch.tensor(positions, device=tokens.device)
-
-
-def _dijkstra_path(cost_grid, road_mask, start, end, grid_width):
-    """Simple Dijkstra implementation for path projection"""
-    # Priority queue: (cost, row, col)
-    pq = [(0.0, start[0], start[1])]
-    visited = set()
-    came_from = {}
-    distances = {start: 0.0}
-    
-    directions = [(0, 1), (0, -1), (1, 0), (-1, 0)]
-    
-    while pq:
-        current_cost, row, col = heapq.heappop(pq)
-        
-        if (row, col) in visited:
-            continue
-        visited.add((row, col))
-        
-        # Check if we reached the end
-        if (row, col) == end:
-            # Reconstruct path
-            path = []
-            current = end
-            while current in came_from:
-                path.append(current)
-                current = came_from[current]
-            path.append(start)
-            return path[::-1]
-        
-        # Explore neighbors
-        for dr, dc in directions:
-            nr, nc = row + dr, col + dc
-            
-            # Check bounds and road validity
-            if (0 <= nr < grid_width and 0 <= nc < grid_width and 
-                road_mask[nr, nc] > 0 and (nr, nc) not in visited):
-                
-                # Cost = current + movement cost based on cell cost
-                move_cost = current_cost + cost_grid[nr, nc] + 1.0  # Base movement cost
-                
-                if (nr, nc) not in distances or move_cost < distances[(nr, nc)]:
-                    distances[(nr, nc)] = move_cost
-                    came_from[(nr, nc)] = (row, col)
-                    heapq.heappush(pq, (move_cost, nr, nc))
-    
-    return []  # No path found
-
-
-def shortest_path_projection(cost_grid, start_pos, end_pos, road_mask, grid_width=40):
-    """
-    Project cost grid to nearest feasible path using BFS/Dijkstra
-    Args:
-        cost_grid: [B, H, W] costs for each cell (-log p(PATH))
-        start_pos: [B, 2] start positions
-        end_pos: [B, 2] end positions  
-        road_mask: [B, H, W] valid road mask (1=road, 0=obstacle)
-    Returns:
-        projected_mask: [B, H, W] binary mask of projected path
-    """
-    batch_size = cost_grid.shape[0]
-    projected_paths = torch.zeros_like(cost_grid)
-    
-    for b in range(batch_size):
-        # Extract batch elements
-        costs = cost_grid[b].cpu().numpy()
-        roads = road_mask[b].cpu().numpy()
-        start = (start_pos[b][0].item(), start_pos[b][1].item())
-        end = (end_pos[b][0].item(), end_pos[b][1].item())
-        
-        # Run Dijkstra's algorithm with costs
-        path = _dijkstra_path(costs, roads, start, end, grid_width)
-        
-        # Convert path to binary mask
-        if path:
-            for (r, c) in path:
-                if 0 <= r < grid_width and 0 <= c < grid_width:
-                    projected_paths[b, r, c] = 1.0
-    
-    return projected_paths
-
-
-def apply_structured_projection(logits, labels, path_token_id=9, start_token_id=7, end_token_id=8, 
-                               obstacle_token_id=1, grid_width=40, projection_weight=1.0):
-    """
-    Apply structured projection during training to enforce feasible paths
-    Uses Straight-Through Estimator for gradient flow
-    """
-    batch_size = logits.shape[0]
-    device = logits.device
-    
-    with torch.no_grad():
-        # Get probabilities for path token
-        probs = torch.softmax(logits, dim=-1)
-        path_probs = probs[..., path_token_id].view(batch_size, grid_width, grid_width)
-        
-        # Create cost grid: -log p(PATH) clamped for numerical stability
-        cost_grid = (-path_probs.clamp(min=1e-6).log())
-        
-        # Extract start/end positions from labels
-        start_positions = extract_positions_from_tokens(labels, start_token_id, grid_width)
-        end_positions = extract_positions_from_tokens(labels, end_token_id, grid_width)
-        
-        # Create road mask (anything that's not an obstacle)
-        road_mask = (labels.view(batch_size, grid_width, grid_width) != obstacle_token_id).float()
-        
-        # Project to feasible paths
-        projected_mask = shortest_path_projection(cost_grid, start_positions, end_positions, road_mask, grid_width)
-        projected_mask_flat = projected_mask.view(batch_size, -1)
-    
-    # Straight-Through Estimator: use projected mask in forward, but gradients from original logits
-    original_path_logits = logits[..., path_token_id]
-    projected_path_logits = projected_mask_flat.detach() + (original_path_logits - original_path_logits.detach())
-    
-    # Binary cross-entropy loss on projected paths
-    projection_loss = F.binary_cross_entropy_with_logits(
-        projected_path_logits, projected_mask_flat.float(), reduction='mean'
-    )
-    
-    return projection_loss * projection_weight, projected_mask_flat
-
-
 def is_valid_solution(metrics, max_path_ratio=0.10, min_connectivity=0.8, min_valid_ratio=0.95):
     """Check if a solution meets validity criteria for ACT rewards"""
     return (
@@ -414,22 +271,87 @@ def is_valid_solution(metrics, max_path_ratio=0.10, min_connectivity=0.8, min_va
 
 
 # ============================================================================
-# Enhanced ACTLossHead with Comprehensive Anti-Cheat System
+# NEW: Curriculum Learning System
+# ============================================================================
+
+class CurriculumScheduler:
+    """Manages progressive constraint tightening during training"""
+    
+    def __init__(self, config):
+        self.config = config
+        self.warmup_steps = getattr(config, 'warmup_steps', 0)
+        self.curriculum_stages = getattr(config, 'curriculum_stages', [])
+        self.current_stage = None
+        self._last_logged_step = -1
+        
+    def get_current_constraints(self, step):
+        """Get constraints for current training step"""
+        # Warmup phase - no constraints
+        if step < self.warmup_steps:
+            return {
+                'max_path_ratio': 1.0,  # Allow anything
+                'path_weight': 1.0,     # Minimal penalty
+                'connectivity_weight': 0.0,
+                'require_connectivity': False,
+                'enable_batch_rejection': False,
+                'sparsity_penalty_weight': 0.0,
+                'budget_loss_weight': 0.0,
+                'coverage_penalty_weight': 0.0,
+                'stage_name': 'warmup'
+            }
+        
+        # Find current curriculum stage
+        current_constraints = self.curriculum_stages[0] if self.curriculum_stages else {}
+        stage_index = 0
+        
+        for i, stage in enumerate(self.curriculum_stages):
+            if step >= stage['start_step']:
+                current_constraints = stage
+                stage_index = i
+            else:
+                break
+        
+        # Add stage identification
+        current_constraints['stage_name'] = f'stage_{stage_index + 1}'
+        current_constraints['stage_index'] = stage_index
+                
+        return current_constraints
+    
+    def should_apply_constraint(self, step, constraint_name):
+        """Check if specific constraint should be applied at current step"""
+        constraints = self.get_current_constraints(step)
+        return constraints.get(constraint_name, False)
+    
+    def log_stage_transition(self, step, constraints, rank=0):
+        """Log curriculum stage transitions"""
+        if rank == 0 and step != self._last_logged_step:
+            stage_name = constraints.get('stage_name', 'unknown')
+            max_ratio = constraints.get('max_path_ratio', 1.0)
+            path_weight = constraints.get('path_weight', 1.0)
+            connectivity_weight = constraints.get('connectivity_weight', 0.0)
+            
+            print(f"🎓 [Step {step}] Curriculum {stage_name}: "
+                  f"max_path_ratio={max_ratio:.2f}, "
+                  f"path_weight={path_weight:.0f}, "
+                  f"connectivity_weight={connectivity_weight:.1f}")
+            
+            self._last_logged_step = step
+
+
+# ============================================================================
+# Enhanced ACTLossHead with Curriculum Learning Support
 # ============================================================================
 
 class ACTLossHead(nn.Module):
     """
-    Enhanced ACTLossHead with comprehensive anti-cheating system:
-    
-    LEVEL 1: Weighted cross-entropy (original)
-    LEVEL 2: Hard constraints (block learning when cheating)
-    LEVEL 3: Enhanced penalties (connectivity, sparsity) 
-    LEVEL 4: Direct supervision (budget loss, coverage penalty)
-    LEVEL 5: Structured projection (force feasible paths)
-    LEVEL 6: ACT validity gating (only reward valid solutions)
+    Enhanced ACTLossHead with curriculum learning and comprehensive anti-cheat system
     """
     def __init__(self, model: nn.Module, 
                  loss_type: str,
+                 # Curriculum learning parameters
+                 curriculum_learning: bool = False,
+                 warmup_steps: int = 0,
+                 curriculum_stages: list = None,
                  # Basic parameters
                  sparsity_penalty_weight: float = 100.0,
                  path_token_id: int = 9,
@@ -441,42 +363,107 @@ class ACTLossHead(nn.Module):
                  grid_width: int = 40,
                  max_path_ratio: float = 0.1,
                  require_connectivity: bool = True,
-                 # NEW: Enhanced anti-cheat parameters
+                 # Enhanced anti-cheat parameters
                  budget_loss_weight: float = 10.0,
                  coverage_penalty_weight: float = 5.0,
                  structured_projection_weight: float = 2.0,
-                 enable_projection: bool = True,
+                 enable_projection: bool = False,  # Disabled due to bfloat16 issues
                  act_validity_gating: bool = True,
                  min_connectivity_for_reward: float = 0.8,
-                 min_valid_path_ratio: float = 0.95):
+                 min_valid_path_ratio: float = 0.95,
+                 **kwargs):
         super().__init__()
         self.model = model
         self.loss_fn = weighted_cross_entropy if loss_type == "weighted_cross_entropy" else globals()[loss_type]
-        
-        # Loss and metric parameters
-        self.sparsity_penalty_weight = sparsity_penalty_weight
-        self.path_token_id = path_token_id
-        self.path_weight = path_weight
-        self.connectivity_weight = connectivity_weight
-        self.start_token_id = start_token_id
-        self.end_token_id = end_token_id
-        self.obstacle_token_id = obstacle_token_id
-        self.grid_width = grid_width
         self.loss_type = loss_type
         
-        # Anti-cheating parameters
-        self.max_path_ratio = max_path_ratio
-        self.require_connectivity = require_connectivity
+        # Store all original parameters for curriculum
+        self.original_params = {
+            'sparsity_penalty_weight': sparsity_penalty_weight,
+            'path_token_id': path_token_id,
+            'path_weight': path_weight,
+            'connectivity_weight': connectivity_weight,
+            'start_token_id': start_token_id,
+            'end_token_id': end_token_id,
+            'obstacle_token_id': obstacle_token_id,
+            'grid_width': grid_width,
+            'max_path_ratio': max_path_ratio,
+            'require_connectivity': require_connectivity,
+            'budget_loss_weight': budget_loss_weight,
+            'coverage_penalty_weight': coverage_penalty_weight,
+            'structured_projection_weight': structured_projection_weight,
+            'enable_projection': enable_projection,
+            'act_validity_gating': act_validity_gating,
+            'min_connectivity_for_reward': min_connectivity_for_reward,
+            'min_valid_path_ratio': min_valid_path_ratio,
+        }
+        self.original_params.update(kwargs)
         
-        # NEW: Enhanced anti-cheat parameters
-        self.budget_loss_weight = budget_loss_weight
-        self.coverage_penalty_weight = coverage_penalty_weight
-        self.structured_projection_weight = structured_projection_weight
-        self.enable_projection = enable_projection
-        self.act_validity_gating = act_validity_gating
-        self.min_connectivity_for_reward = min_connectivity_for_reward
-        self.min_valid_path_ratio = min_valid_path_ratio
+        # Curriculum learning setup
+        self.curriculum_learning = curriculum_learning
+        if curriculum_learning:
+            # Create a config object for curriculum scheduler
+            curriculum_config = type('Config', (), {
+                'warmup_steps': warmup_steps,
+                'curriculum_stages': curriculum_stages or []
+            })()
+            self.curriculum_scheduler = CurriculumScheduler(curriculum_config)
+        else:
+            self.curriculum_scheduler = None
+            
+        # Initialize with starting parameters
+        self._update_parameters(self.original_params)
         
+        # Training step counter
+        self.current_step = 0
+        self._last_stage_index = -1
+        
+    def _update_parameters(self, params):
+        """Update internal parameters (used for curriculum)"""
+        # Token IDs (static)
+        self.path_token_id = params.get('path_token_id', 9)
+        self.start_token_id = params.get('start_token_id', 7)
+        self.end_token_id = params.get('end_token_id', 8)
+        self.obstacle_token_id = params.get('obstacle_token_id', 1)
+        self.grid_width = params.get('grid_width', 40)
+        
+        # Dynamic parameters (updated by curriculum)
+        self.path_weight = params.get('path_weight', 40.0)
+        self.max_path_ratio = params.get('max_path_ratio', 0.1)
+        self.connectivity_weight = params.get('connectivity_weight', 1.0)
+        self.require_connectivity = params.get('require_connectivity', True)
+        self.sparsity_penalty_weight = params.get('sparsity_penalty_weight', 0.0)
+        self.budget_loss_weight = params.get('budget_loss_weight', 0.0)
+        self.coverage_penalty_weight = params.get('coverage_penalty_weight', 0.0)
+        
+        # ACT parameters (can be curriculum-adjusted)
+        self.act_validity_gating = params.get('act_validity_gating', True)
+        self.min_connectivity_for_reward = params.get('min_connectivity_for_reward', 0.8)
+        self.min_valid_path_ratio = params.get('min_valid_path_ratio', 0.95)
+        
+        # Static parameters
+        self.structured_projection_weight = params.get('structured_projection_weight', 0.0)
+        self.enable_projection = params.get('enable_projection', False)
+        
+    def set_training_step(self, step, rank=0):
+        """Update current training step and adjust constraints if using curriculum"""
+        self.current_step = step
+        
+        if self.curriculum_learning and self.curriculum_scheduler:
+            # Get constraints for current step
+            current_constraints = self.curriculum_scheduler.get_current_constraints(step)
+            
+            # Update parameters based on curriculum stage
+            updated_params = self.original_params.copy()
+            updated_params.update(current_constraints)
+            self._update_parameters(updated_params)
+            
+            # Log stage transitions
+            current_stage_index = current_constraints.get('stage_index', -1)
+            if current_stage_index != self._last_stage_index:
+                self.curriculum_scheduler.log_stage_transition(step, current_constraints, rank)
+                self._last_stage_index = current_stage_index
+    
     def initial_carry(self, *args, **kwargs):
         return self.model.initial_carry(*args, **kwargs)
 
@@ -486,8 +473,8 @@ class ACTLossHead(nn.Module):
         # Model args
         **model_kwargs,
     ) -> Tuple[Any, torch.Tensor, Dict[str, torch.Tensor], Optional[Dict[str, torch.Tensor]], torch.Tensor]:
+        
         # Model logits
-        # B x SeqLen x D
         new_carry, outputs = self.model(**model_kwargs)
         labels = new_carry.current_data["labels"]
 
@@ -499,11 +486,25 @@ class ACTLossHead(nn.Module):
         loss_counts = mask.sum(-1)
         loss_divisor = loss_counts.clamp_min(1).unsqueeze(-1)  # Avoid NaNs in division
         
-        # LEVEL 2: HARD CONSTRAINT - Prevent "everything is path" exploit
+        # CURRICULUM-AWARE CONSTRAINT CHECKING
         pred_path_mask = (predicted_tokens == self.path_token_id)
         path_ratio = pred_path_mask.float().mean()
         
-        if path_ratio > self.max_path_ratio:  # >10% of grid is path
+        # Check if we should apply hard constraints (curriculum-aware)
+        should_block = False
+        current_max_ratio = self.max_path_ratio
+        enable_blocking = True
+        
+        if self.curriculum_learning and self.curriculum_scheduler:
+            constraints = self.curriculum_scheduler.get_current_constraints(self.current_step)
+            enable_blocking = constraints.get('enable_batch_rejection', False)
+            current_max_ratio = constraints.get('max_path_ratio', 1.0)
+            should_block = enable_blocking and (path_ratio > current_max_ratio)
+        else:
+            # Original behavior
+            should_block = path_ratio > self.max_path_ratio
+        
+        if should_block:
             # HARD CONSTRAINT: Minimal loss to prevent learning when cheating detected
             if self.loss_type == "weighted_cross_entropy":
                 minimal_loss = (weighted_cross_entropy(
@@ -524,24 +525,29 @@ class ACTLossHead(nn.Module):
                 "path_ratio": path_ratio,
                 "lm_loss": minimal_loss.detach(),
                 "blocked_learning": torch.tensor(1.0, device=outputs["logits"].device),
+                "curriculum_step": torch.tensor(float(self.current_step), device=outputs["logits"].device),
+                "curriculum_max_path_ratio": torch.tensor(current_max_ratio, device=outputs["logits"].device),
+                "curriculum_enable_blocking": torch.tensor(float(enable_blocking), device=outputs["logits"].device),
             }
             return new_carry, blocked_loss, metrics, {}, True  # Force halt when cheating
 
-        # NORMAL TRAINING PATH - Comprehensive loss computation
+        # NORMAL TRAINING PATH - Comprehensive loss computation with curriculum awareness
         
-        # Correctness computation with enhanced validity checks
+        # Correctness computation with curriculum-aware validity checks
         with torch.no_grad():
             is_correct = mask & (torch.argmax(outputs["logits"], dim=-1) == labels)
             seq_is_correct = is_correct.sum(-1) == loss_counts
             
             # Compute comprehensive quality metrics
-            start_end_connectivity = compute_start_end_connectivity(
-                predicted_tokens, labels,
-                start_token_id=self.start_token_id,
-                end_token_id=self.end_token_id,
-                path_token_id=self.path_token_id,
-                grid_width=self.grid_width
-            )
+            start_end_connectivity = 1.0  # Default if not checking
+            if self.require_connectivity:
+                start_end_connectivity = compute_start_end_connectivity(
+                    predicted_tokens, labels,
+                    start_token_id=self.start_token_id,
+                    end_token_id=self.end_token_id,
+                    path_token_id=self.path_token_id,
+                    grid_width=self.grid_width
+                )
             
             valid_path_ratio = compute_valid_path_ratio(
                 predicted_tokens, labels,
@@ -555,7 +561,7 @@ class ACTLossHead(nn.Module):
                 path_token_id=self.path_token_id
             )
             
-            # LEVEL 6: ACT Validity Gating - Only reward truly valid solutions
+            # CURRICULUM-AWARE ACT Validity Gating
             if self.act_validity_gating:
                 batch_metrics = {
                     "start_end_connectivity": start_end_connectivity,
@@ -563,14 +569,14 @@ class ACTLossHead(nn.Module):
                     "valid_path_ratio": valid_path_ratio
                 }
                 
-                # Override accuracy based on validity
+                # Use curriculum-adjusted thresholds
                 if not is_valid_solution(batch_metrics, 
-                                       max_path_ratio=self.max_path_ratio,
+                                       max_path_ratio=current_max_ratio,
                                        min_connectivity=self.min_connectivity_for_reward,
                                        min_valid_ratio=self.min_valid_path_ratio):
                     seq_is_correct = torch.zeros_like(seq_is_correct, dtype=torch.bool)
             
-            # Standard connectivity requirement
+            # Standard connectivity requirement (curriculum-aware)
             elif self.require_connectivity and start_end_connectivity < 0.5:
                 seq_is_correct = torch.zeros_like(seq_is_correct, dtype=torch.bool)
             
@@ -586,12 +592,12 @@ class ACTLossHead(nn.Module):
                 "steps":          torch.where(valid_metrics, new_carry.steps, 0).sum(),
             }
 
-        # LEVEL 1: Main loss computation (weighted cross-entropy)
+        # CURRICULUM-ADJUSTED MAIN LOSS COMPUTATION
         if self.loss_type == "weighted_cross_entropy":
             lm_loss = (weighted_cross_entropy(
                 outputs["logits"], labels, 
                 path_token_id=self.path_token_id,
-                path_weight=self.path_weight,
+                path_weight=self.path_weight,  # Now curriculum-adjusted
                 ignore_index=IGNORE_LABEL_ID
             ) / loss_divisor).sum()
         else:
@@ -604,26 +610,28 @@ class ACTLossHead(nn.Module):
             "q_halt_loss": q_halt_loss.detach(),
         })
 
-        # LEVEL 3: Enhanced sparsity penalty
+        # CURRICULUM-ADJUSTED PENALTY SYSTEM
+        
+        # Level 3: Enhanced sparsity penalty
         sparsity_penalty = torch.tensor(0.0, device=outputs["logits"].device)
         if self.sparsity_penalty_weight > 0:
             path_predictions = (predicted_tokens == self.path_token_id).float()
             sparsity_penalty = self.sparsity_penalty_weight * path_predictions.mean()
             metrics["sparsity_penalty"] = sparsity_penalty.detach()
 
-        # LEVEL 3: Enhanced connectivity penalty
+        # Level 3: Enhanced connectivity penalty
         connectivity_penalty = torch.tensor(0.0, device=outputs["logits"].device)
         if self.connectivity_weight > 0:
             connectivity_penalty_value = compute_connectivity_loss(
                 predicted_tokens, 
                 path_token_id=self.path_token_id,
                 grid_width=self.grid_width,
-                connectivity_weight=self.connectivity_weight
+                connectivity_weight=self.connectivity_weight  # Now curriculum-adjusted
             )
             connectivity_penalty = torch.tensor(connectivity_penalty_value, device=outputs["logits"].device)
             metrics["connectivity_penalty"] = connectivity_penalty.detach()
 
-        # LEVEL 4: NEW - Path budget loss (direct supervision on token count)
+        # Level 4: Path budget loss (direct supervision on token count)
         budget_loss = torch.tensor(0.0, device=outputs["logits"].device)
         if self.budget_loss_weight > 0:
             budget_loss_value = compute_path_budget_loss(
@@ -634,7 +642,7 @@ class ACTLossHead(nn.Module):
             budget_loss = self.budget_loss_weight * budget_loss_value
             metrics["budget_loss"] = budget_loss.detach()
 
-        # LEVEL 4: NEW - Coverage penalty (penalize false positive paths)
+        # Level 4: Coverage penalty (penalize false positive paths)
         coverage_penalty = torch.tensor(0.0, device=outputs["logits"].device)
         if self.coverage_penalty_weight > 0:
             coverage_penalty_value = compute_coverage_penalty(
@@ -643,36 +651,13 @@ class ACTLossHead(nn.Module):
             )
             coverage_penalty = self.coverage_penalty_weight * coverage_penalty_value
             metrics["coverage_penalty"] = coverage_penalty.detach()
-            metrics["over_coverage_ratio"] = torch.tensor(coverage_penalty_value, device=outputs["logits"].device)
+            metrics["over_coverage_ratio"] = coverage_penalty_value.clone().detach()
 
-        # LEVEL 5: NEW - Structured projection (force feasible paths)
+        # Level 5: Structured projection (disabled for now due to bfloat16 issues)
         projection_loss = torch.tensor(0.0, device=outputs["logits"].device)
-        projected_paths = None
-        
         if self.enable_projection and self.structured_projection_weight > 0:
-            try:
-                projection_loss_value, projected_paths = apply_structured_projection(
-                    outputs["logits"], labels,
-                    path_token_id=self.path_token_id,
-                    start_token_id=self.start_token_id,
-                    end_token_id=self.end_token_id,
-                    obstacle_token_id=self.obstacle_token_id,
-                    grid_width=self.grid_width,
-                    projection_weight=self.structured_projection_weight
-                )
-                projection_loss = projection_loss_value
-                metrics["projection_loss"] = projection_loss.detach()
-                
-                # Track how much projection changed the prediction
-                if projected_paths is not None:
-                    original_path_mask = (predicted_tokens == self.path_token_id).float()
-                    projection_diff = (projected_paths - original_path_mask).abs().sum(dim=-1).mean()
-                    metrics["projection_diff"] = projection_diff.detach()
-                    
-            except Exception as e:
-                # Fallback: if projection fails, continue without it
-                print(f"Projection failed: {e}")
-                projection_loss = torch.tensor(0.0, device=outputs["logits"].device)
+            # Implementation would go here, but disabled for stability
+            metrics["projection_loss"] = projection_loss.detach()
 
         # Comprehensive path metrics
         path_mask = (labels == self.path_token_id)
@@ -692,6 +677,13 @@ class ACTLossHead(nn.Module):
             "start_end_connectivity": torch.tensor(start_end_connectivity, device=outputs["logits"].device),
             "path_efficiency": torch.tensor(path_efficiency, device=outputs["logits"].device),
             "valid_path_ratio": torch.tensor(valid_path_ratio, device=outputs["logits"].device),
+            
+            # Curriculum tracking metrics
+            "curriculum_step": torch.tensor(float(self.current_step), device=outputs["logits"].device),
+            "curriculum_max_path_ratio": torch.tensor(current_max_ratio, device=outputs["logits"].device),
+            "curriculum_path_weight": torch.tensor(self.path_weight, device=outputs["logits"].device),
+            "curriculum_connectivity_weight": torch.tensor(self.connectivity_weight, device=outputs["logits"].device),
+            "curriculum_enable_blocking": torch.tensor(float(enable_blocking), device=outputs["logits"].device),
         })
 
         # Q continue (bootstrapping target loss)
@@ -703,9 +695,37 @@ class ACTLossHead(nn.Module):
         # Filter outputs for return
         detached_outputs = {k: outputs[k].detach() for k in return_keys if k in outputs}
 
-        # TOTAL LOSS: Combination of all loss components
+        # TOTAL LOSS: Combination of all curriculum-adjusted loss components
         total_loss = (lm_loss + 0.5 * (q_halt_loss + q_continue_loss) + 
                      sparsity_penalty + connectivity_penalty + 
                      budget_loss + coverage_penalty + projection_loss)
 
         return new_carry, total_loss, metrics, detached_outputs, new_carry.halted.all()
+
+
+# ============================================================================
+# Utility Functions for Training Integration
+# ============================================================================
+
+def update_loss_curriculum_step(loss_head, step, rank=0):
+    """Call this in your training loop to update curriculum step"""
+    if hasattr(loss_head, 'set_training_step'):
+        loss_head.set_training_step(step, rank)
+    elif hasattr(loss_head, '_orig_mod') and hasattr(loss_head._orig_mod, 'set_training_step'):
+        # Handle torch.compile wrapped models
+        loss_head._orig_mod.set_training_step(step, rank)
+
+
+def get_curriculum_status(loss_head):
+    """Get current curriculum status for logging"""
+    if hasattr(loss_head, 'curriculum_scheduler') and loss_head.curriculum_scheduler:
+        constraints = loss_head.curriculum_scheduler.get_current_constraints(loss_head.current_step)
+        return {
+            'step': loss_head.current_step,
+            'stage': constraints.get('stage_name', 'unknown'),
+            'max_path_ratio': constraints.get('max_path_ratio', 1.0),
+            'path_weight': constraints.get('path_weight', 1.0),
+            'connectivity_weight': constraints.get('connectivity_weight', 0.0),
+            'enable_blocking': constraints.get('enable_batch_rejection', False)
+        }
+    return None

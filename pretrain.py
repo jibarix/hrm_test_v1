@@ -97,10 +97,14 @@ class TrainState:
     step: int
     total_steps: int
     
-    # NEW: Enhanced tracking for batch rejection
+    # Enhanced tracking for batch rejection and curriculum
     total_batches_processed: int = 0
     total_batches_rejected: int = 0
     consecutive_rejections: int = 0
+    
+    # Curriculum tracking
+    current_curriculum_stage: str = "warmup"
+    last_curriculum_transition_step: int = 0
 
 
 def create_dataloader(config: PretrainConfig, split: str, rank: int, world_size: int, **kwargs):
@@ -145,7 +149,18 @@ def create_model(config: PretrainConfig, train_metadata: PuzzleDatasetMetadata, 
 
     with torch.device("cuda"):
         model: nn.Module = model_cls(model_cfg)
-        model = loss_head_cls(model, **config.arch.loss.__pydantic_extra__)  # type: ignore
+        
+        # Create loss head with curriculum learning parameters
+        loss_params = dict(config.arch.loss.__pydantic_extra__)  # type: ignore
+        
+        # Add curriculum learning parameters from arch config
+        if hasattr(config.arch, 'curriculum_learning'):
+            loss_params['curriculum_learning'] = getattr(config.arch, 'curriculum_learning', False)
+            loss_params['warmup_steps'] = getattr(config.arch, 'warmup_steps', 0)
+            loss_params['curriculum_stages'] = getattr(config.arch, 'curriculum_stages', [])
+        
+        model = loss_head_cls(model, **loss_params)
+        
         if "DISABLE_COMPILE" not in os.environ:
             model = torch.compile(model, dynamic=False)  # type: ignore
 
@@ -210,7 +225,11 @@ def init_train_state(config: PretrainConfig, train_metadata: PuzzleDatasetMetada
         # Initialize enhanced tracking
         total_batches_processed=0,
         total_batches_rejected=0,
-        consecutive_rejections=0
+        consecutive_rejections=0,
+        
+        # Initialize curriculum tracking
+        current_curriculum_stage="warmup",
+        last_curriculum_transition_step=0
     )
 
 
@@ -234,42 +253,48 @@ def compute_lr(base_lr: float, config: PretrainConfig, train_state: TrainState):
 
 
 # ============================================================================
-# Enhanced Training Functions with Batch Rejection & Resampling
+# Enhanced Training Functions with Curriculum Learning Support
 # ============================================================================
 
-def is_batch_rejected(metrics, config):
-    """
-    Determine if a batch should be rejected based on anti-cheat metrics
-    """
-    blocked_learning = metrics.get("blocked_learning", torch.tensor(0.0)).item()
-    path_ratio = metrics.get("path_ratio", torch.tensor(0.0)).item()
+def update_curriculum_step(model, step, rank=0):
+    """Update the curriculum step in the loss function"""
+    loss_module = model
+    if hasattr(loss_module, '_orig_mod'):  # torch.compile wrapper
+        loss_module = loss_module._orig_mod
     
-    # Get rejection thresholds from config with sensible defaults
-    max_path_ratio = getattr(config.arch.loss, 'max_path_ratio', 0.1)
-    rejection_threshold = getattr(config.arch, 'rejection_path_ratio_threshold', max_path_ratio * 1.5)  # 50% buffer
-    
-    # Reject if:
-    # 1. Explicitly blocked by loss function (blocked_learning > 0.5)
-    # 2. Path ratio exceeds threshold (spam detection)
-    should_reject = (blocked_learning > 0.5) or (path_ratio > rejection_threshold)
-    
-    return should_reject, {
-        "blocked_learning": blocked_learning,
-        "path_ratio": path_ratio,
-        "rejection_threshold": rejection_threshold
-    }
+    if hasattr(loss_module, 'set_training_step'):
+        loss_module.set_training_step(step, rank)
 
 
-def train_batch_with_rejection(config: PretrainConfig, train_state: TrainState, batch: Any, global_batch_size: int, rank: int, world_size: int):
+def get_curriculum_status(model):
+    """Get current curriculum status for logging"""
+    loss_module = model
+    if hasattr(loss_module, '_orig_mod'):  # torch.compile wrapper
+        loss_module = loss_module._orig_mod
+    
+    if hasattr(loss_module, 'curriculum_scheduler') and loss_module.curriculum_scheduler:
+        current_step = getattr(loss_module, 'current_step', 0)
+        constraints = loss_module.curriculum_scheduler.get_current_constraints(current_step)
+        return {
+            'step': current_step,
+            'stage': constraints.get('stage_name', 'unknown'),
+            'max_path_ratio': constraints.get('max_path_ratio', 1.0),
+            'path_weight': constraints.get('path_weight', 1.0),
+            'connectivity_weight': constraints.get('connectivity_weight', 0.0),
+            'enable_blocking': constraints.get('enable_batch_rejection', False)
+        }
+    return None
+
+
+def train_batch_with_curriculum(config: PretrainConfig, train_state: TrainState, batch: Any, global_batch_size: int, rank: int, world_size: int):
     """
-    Enhanced train_batch function with rejection capability
-    Returns: (accepted: bool, metrics: dict or None)
+    Enhanced train_batch function with curriculum learning support
     """
     train_state.step += 1
     train_state.total_batches_processed += 1
     
     if train_state.step > train_state.total_steps:
-        return True, None  # Accept to end training
+        return True, None
 
     # To device
     batch = {k: v.cuda() for k, v in batch.items()}
@@ -279,20 +304,68 @@ def train_batch_with_rejection(config: PretrainConfig, train_state: TrainState, 
         with torch.device("cuda"):
             train_state.carry = train_state.model.initial_carry(batch)
 
-    # Forward pass (always compute to get metrics)
+    # CURRICULUM UPDATE: Inform loss function of current step
+    update_curriculum_step(train_state.model, train_state.step, rank)
+
+    # Forward pass
     train_state.carry, loss, metrics, _, _ = train_state.model(carry=train_state.carry, batch=batch, return_keys=[])
 
-    # Check if batch should be rejected
-    should_reject, rejection_info = is_batch_rejected(metrics, config)
+    # CURRICULUM-AWARE REJECTION: Check if we should reject based on current curriculum stage
+    should_reject = False
+    rejection_info = {}
+    
+    curriculum_enabled = getattr(config.arch, 'curriculum_learning', False)
+    if curriculum_enabled:
+        # Get current curriculum constraints from metrics
+        blocked_learning = metrics.get("blocked_learning", torch.tensor(0.0)).item()
+        path_ratio = metrics.get("path_ratio", torch.tensor(0.0)).item()
+        current_max_ratio = metrics.get("curriculum_max_path_ratio", torch.tensor(1.0)).item()
+        enable_blocking = metrics.get("curriculum_enable_blocking", torch.tensor(0.0)).item() > 0.5
+        
+        # Only reject if curriculum stage allows it AND we exceed limits significantly
+        should_reject = enable_blocking and (blocked_learning > 0.5 or path_ratio > current_max_ratio * 1.3)
+        
+        rejection_info = {
+            "blocked_learning": blocked_learning,
+            "path_ratio": path_ratio,
+            "curriculum_max_ratio": current_max_ratio,
+            "curriculum_allows_rejection": enable_blocking
+        }
+        
+        # Update curriculum stage tracking
+        curriculum_status = get_curriculum_status(train_state.model)
+        if curriculum_status:
+            new_stage = curriculum_status['stage']
+            if new_stage != train_state.current_curriculum_stage:
+                train_state.current_curriculum_stage = new_stage
+                train_state.last_curriculum_transition_step = train_state.step
+                
+    else:
+        # Original rejection logic (for backward compatibility)
+        blocked_learning = metrics.get("blocked_learning", torch.tensor(0.0)).item()
+        path_ratio = metrics.get("path_ratio", torch.tensor(0.0)).item()
+        max_path_ratio = getattr(config.arch.loss, 'max_path_ratio', 0.1)
+        
+        should_reject = (blocked_learning > 0.5) or (path_ratio > max_path_ratio * 1.5)
+        rejection_info = {
+            "blocked_learning": blocked_learning,  
+            "path_ratio": path_ratio,
+            "max_path_ratio": max_path_ratio
+        }
     
     if should_reject:
-        # REJECT BATCH - No gradient computation, no optimizer step
+        # REJECT BATCH
         train_state.total_batches_rejected += 1
         train_state.consecutive_rejections += 1
         
         if rank == 0:
+            if curriculum_enabled:
+                stage_info = f"stage={train_state.current_curriculum_stage}, max_ratio={rejection_info['curriculum_max_ratio']:.2f}, blocking={rejection_info['curriculum_allows_rejection']}"
+            else:
+                stage_info = f"max_ratio={rejection_info['max_path_ratio']:.2f}"
+            
             print(f"[Step {train_state.step}] REJECTED batch - path_ratio: {rejection_info['path_ratio']:.3f}, "
-                  f"blocked: {rejection_info['blocked_learning']:.1f}, "
+                  f"blocked: {rejection_info['blocked_learning']:.1f}, {stage_info}, "
                   f"consecutive: {train_state.consecutive_rejections}")
         
         # Return rejection metrics for logging
@@ -303,10 +376,19 @@ def train_batch_with_rejection(config: PretrainConfig, train_state: TrainState, 
             "train/consecutive_rejections": float(train_state.consecutive_rejections),
             "train/total_rejection_rate": train_state.total_batches_rejected / train_state.total_batches_processed,
         }
-        return False, rejection_metrics  # Rejected
+        
+        # Add curriculum metrics if available
+        if curriculum_enabled:
+            rejection_metrics.update({
+                "train/curriculum_max_ratio": rejection_info.get('curriculum_max_ratio', 0.0),
+                "train/curriculum_allows_rejection": float(rejection_info.get('curriculum_allows_rejection', False)),
+                "train/curriculum_stage_name": train_state.current_curriculum_stage,
+            })
+        
+        return False, rejection_metrics
     
-    # ACCEPT BATCH - Normal training
-    train_state.consecutive_rejections = 0  # Reset consecutive counter
+    # ACCEPT BATCH - Continue with normal training
+    train_state.consecutive_rejections = 0
     
     # Backward pass
     ((1 / global_batch_size) * loss).backward()
@@ -344,20 +426,34 @@ def train_batch_with_rejection(config: PretrainConfig, train_state: TrainState, 
             
             # Add training metadata
             reduced_metrics["train/lr"] = lr_this_step
-            reduced_metrics["train/batch_rejected"] = 0.0  # Mark as accepted
+            reduced_metrics["train/batch_rejected"] = 0.0
             reduced_metrics["train/consecutive_rejections"] = 0.0
             reduced_metrics["train/total_rejection_rate"] = train_state.total_batches_rejected / train_state.total_batches_processed
             
-            return True, reduced_metrics  # Accepted
+            # Add curriculum progress metrics
+            if curriculum_enabled:
+                curriculum_status = get_curriculum_status(train_state.model)
+                if curriculum_status:
+                    reduced_metrics.update({
+                        "train/curriculum_step": float(train_state.step),
+                        "train/curriculum_stage_name": train_state.current_curriculum_stage,
+                        "train/curriculum_max_path_ratio": curriculum_status['max_path_ratio'],
+                        "train/curriculum_path_weight": curriculum_status['path_weight'],
+                        "train/curriculum_connectivity_weight": curriculum_status['connectivity_weight'],
+                        "train/curriculum_enable_blocking": float(curriculum_status['enable_blocking']),
+                        "train/steps_since_stage_transition": float(train_state.step - train_state.last_curriculum_transition_step),
+                    })
+            
+            return True, reduced_metrics
 
-    return True, None  # Accepted but no metrics
+    return True, None
 
 
 class BatchResampler:
     """
     Helper class to handle batch resampling when rejections occur
     """
-    def __init__(self, dataloader, max_consecutive_rejections=10):
+    def __init__(self, dataloader, max_consecutive_rejections=20):  # Increased for curriculum
         self.dataloader = dataloader
         self.dataloader_iter = iter(dataloader)
         self.max_consecutive_rejections = max_consecutive_rejections
@@ -397,7 +493,7 @@ class BatchResampler:
             set_name, batch, global_batch_size = batch_data
             
             # Try training on this batch
-            accepted, metrics = train_batch_with_rejection(
+            accepted, metrics = train_batch_with_curriculum(
                 config, train_state, batch, global_batch_size, rank, world_size
             )
             
@@ -418,7 +514,7 @@ class BatchResampler:
         # Too many consecutive rejections - force accept the last batch to prevent infinite loop
         if rank == 0:
             print(f"WARNING: {self.max_consecutive_rejections} consecutive rejections at step {train_state.step}. "
-                  "This indicates the model may be stuck in a degenerate state.")
+                  "This may indicate curriculum stage transition difficulties.")
         
         # Force accept by temporarily disabling rejection
         batch_data = self.get_next_batch()
@@ -428,7 +524,10 @@ class BatchResampler:
             # Ensure batch is on correct device
             batch = {k: v.cuda() for k, v in batch.items()}
             
-            # Force accept by skipping rejection check (just do normal training)
+            # Update curriculum step
+            update_curriculum_step(train_state.model, train_state.step, rank)
+            
+            # Force accept by doing normal training (ignoring rejection logic)
             train_state.carry, loss, metrics, _, _ = train_state.model(carry=train_state.carry, batch=batch, return_keys=[])
             ((1 / global_batch_size) * loss).backward()
             
@@ -527,13 +626,13 @@ def save_code_and_config(config: PretrainConfig):
     for code_file in code_list:
         if code_file is not None:
             code_name = os.path.basename(code_file)
-
             shutil.copy(code_file, os.path.join(config.checkpoint_path, code_name))
 
-    # Dump config as yaml
-    config_file = os.path.join(config.checkpoint_path, "all_config.yaml")
+    # FIXED: Save config as JSON instead of YAML to avoid serialization issues
+    config_file = os.path.join(config.checkpoint_path, "all_config.json")
     with open(config_file, "wt") as f:
-        yaml.dump(config.model_dump(), f)
+        import json
+        json.dump(config.model_dump(), f, indent=2, default=str)
 
     # Log code
     wandb.run.log_code(config.checkpoint_path)
@@ -602,28 +701,52 @@ def launch(hydra_config: DictConfig):
         wandb.log({"num_params": sum(x.numel() for x in train_state.model.parameters())}, step=0)
         save_code_and_config(config)
 
-    # Enhanced Training Loop with Batch Rejection & Resampling
-    max_consecutive_rejections = getattr(config.arch, 'max_consecutive_rejections', 10)
+    # Enhanced Training Loop with Curriculum Learning Support
+    curriculum_enabled = getattr(config.arch, 'curriculum_learning', False)
+    max_consecutive_rejections = getattr(config.arch, 'max_consecutive_rejections', 20)
     enable_batch_rejection = getattr(config.arch, 'enable_batch_rejection', True)
     
     if RANK == 0:
-        print(f"Enhanced training with batch rejection: {enable_batch_rejection}")
-        print(f"Max consecutive rejections: {max_consecutive_rejections}")
-        if enable_batch_rejection:
-            # Pre-calculate estimated batches for logging
-            estimated_examples = train_metadata.total_groups * train_metadata.mean_puzzle_examples * train_epochs_per_iter
-            estimated_batches = max(int(estimated_examples / config.global_batch_size), 10)
-            print(f"Estimated {estimated_batches} batches per epoch (from {estimated_examples:.0f} examples)")
+        print(f"🚀 Enhanced training with curriculum learning: {curriculum_enabled}")
+        if curriculum_enabled:
+            warmup_steps = getattr(config.arch, 'warmup_steps', 0)
+            num_stages = len(getattr(config.arch, 'curriculum_stages', []))
+            print(f"🎓 Curriculum setup:")
+            print(f"   - Warmup steps: {warmup_steps}")
+            print(f"   - Number of curriculum stages: {num_stages}")
+            print(f"   - Max consecutive rejections: {max_consecutive_rejections}")
+            
+            # Show curriculum schedule
+            if num_stages > 0:
+                print(f"   - Curriculum schedule:")
+                for i, stage in enumerate(getattr(config.arch, 'curriculum_stages', [])):
+                    start_step = stage.get('start_step', 0)
+                    max_ratio = stage.get('max_path_ratio', 1.0)
+                    path_weight = stage.get('path_weight', 1.0)
+                    print(f"     Stage {i+1}: Step {start_step}+ -> max_ratio={max_ratio:.2f}, weight={path_weight:.0f}")
+        else:
+            print(f"   Batch rejection: {enable_batch_rejection}")
+            print(f"   Max consecutive rejections: {max_consecutive_rejections}")
 
     for _iter_id in range(total_iters):
         if RANK == 0:
-            print(f"[Rank {RANK}, World Size {WORLD_SIZE}]: Epoch {_iter_id * train_epochs_per_iter}")
+            epoch_start = _iter_id * train_epochs_per_iter
+            print(f"[Rank {RANK}]: Epoch {epoch_start}")
+            
+            # Log curriculum stage if enabled
+            if curriculum_enabled:
+                curriculum_status = get_curriculum_status(train_state.model)
+                if curriculum_status:
+                    print(f"   Current curriculum stage: {curriculum_status['stage']}")
+                    print(f"   Stage constraints: max_path_ratio={curriculum_status['max_path_ratio']:.2f}, "
+                          f"path_weight={curriculum_status['path_weight']:.0f}, "
+                          f"blocking_enabled={curriculum_status['enable_blocking']}")
 
-        ############ Enhanced Training Iteration with Rejection Handling
+        ############ Enhanced Training Iteration with Curriculum Support
         train_state.model.train()
         
         if enable_batch_rejection:
-            # Use enhanced batch resampler
+            # Use enhanced batch resampler with curriculum support
             batch_resampler = BatchResampler(train_loader, max_consecutive_rejections)
             
             # Process batches with rejection handling
@@ -645,17 +768,21 @@ def launch(hydra_config: DictConfig):
                 
                 epoch_batches_processed += 1
                 
-                # Log progress periodically
+                # Log progress periodically, including curriculum info
                 if RANK == 0 and epoch_batches_processed % 50 == 0:
                     rejection_rate = train_state.total_batches_rejected / max(train_state.total_batches_processed, 1)
+                    stage_info = ""
+                    if curriculum_enabled:
+                        stage_info = f", stage={train_state.current_curriculum_stage}"
+                    
                     print(f"  Processed {epoch_batches_processed}/{target_batches_per_epoch} batches, "
                           f"rejection rate: {rejection_rate:.2%}, "
-                          f"consecutive: {train_state.consecutive_rejections}")
+                          f"consecutive: {train_state.consecutive_rejections}{stage_info}")
         
         else:
-            # Original training loop (no rejection)
+            # Original training loop (no rejection) with curriculum support
             for set_name, batch, global_batch_size in train_loader:
-                accepted, metrics = train_batch_with_rejection(config, train_state, batch, global_batch_size, rank=RANK, world_size=WORLD_SIZE)
+                accepted, metrics = train_batch_with_curriculum(config, train_state, batch, global_batch_size, rank=RANK, world_size=WORLD_SIZE)
                 
                 if RANK == 0 and metrics is not None:
                     wandb.log(metrics, step=train_state.step)
@@ -668,7 +795,7 @@ def launch(hydra_config: DictConfig):
         if RANK == 0 and metrics is not None:
             wandb.log(metrics, step=train_state.step)
             
-            # Enhanced logging for rejection statistics
+            # Enhanced logging for curriculum and rejection statistics
             if enable_batch_rejection:
                 rejection_stats = {
                     "epoch/total_batches_processed": train_state.total_batches_processed,
@@ -678,7 +805,20 @@ def launch(hydra_config: DictConfig):
                 }
                 wandb.log(rejection_stats, step=train_state.step)
                 
-                print(f"Epoch {_iter_id} complete. Overall rejection rate: {rejection_stats['epoch/overall_rejection_rate']:.2%}")
+            if curriculum_enabled:
+                curriculum_status = get_curriculum_status(train_state.model)
+                if curriculum_status:
+                    curriculum_stats = {
+                        "epoch/curriculum_stage": train_state.current_curriculum_stage,
+                        "epoch/curriculum_max_path_ratio": curriculum_status['max_path_ratio'],
+                        "epoch/curriculum_path_weight": curriculum_status['path_weight'],
+                        "epoch/curriculum_connectivity_weight": curriculum_status['connectivity_weight'],
+                        "epoch/steps_since_stage_transition": train_state.step - train_state.last_curriculum_transition_step,
+                    }
+                    wandb.log(curriculum_stats, step=train_state.step)
+                
+                print(f"Epoch {_iter_id} complete. Stage: {train_state.current_curriculum_stage}, "
+                      f"Rejection rate: {rejection_stats.get('epoch/overall_rejection_rate', 0):.2%}")
             
         ############ Checkpointing
         if RANK == 0 and (config.checkpoint_every_eval or (_iter_id == total_iters - 1)):
@@ -689,19 +829,28 @@ def launch(hydra_config: DictConfig):
         dist.destroy_process_group()
     
     # Final summary
-    if RANK == 0 and enable_batch_rejection:
-        final_rejection_rate = train_state.total_batches_rejected / max(train_state.total_batches_processed, 1)
+    if RANK == 0:
         print(f"\n🏁 Training Complete!")
         print(f"📊 Final Statistics:")
+        print(f"   Total training steps: {train_state.step}")
         print(f"   Total batches processed: {train_state.total_batches_processed}")
-        print(f"   Total batches rejected: {train_state.total_batches_rejected}")
-        print(f"   Overall rejection rate: {final_rejection_rate:.2%}")
-        print(f"   Final consecutive rejections: {train_state.consecutive_rejections}")
+        if enable_batch_rejection:
+            final_rejection_rate = train_state.total_batches_rejected / max(train_state.total_batches_processed, 1)
+            print(f"   Total batches rejected: {train_state.total_batches_rejected}")
+            print(f"   Overall rejection rate: {final_rejection_rate:.2%}")
+            print(f"   Final consecutive rejections: {train_state.consecutive_rejections}")
+            
+            if final_rejection_rate > 0.5:
+                print("⚠️  Warning: High rejection rate suggests model struggled with constraints")
+            elif final_rejection_rate < 0.05:
+                print("✅ Low rejection rate indicates successful constraint learning")
         
-        if final_rejection_rate > 0.5:
-            print("⚠️  Warning: High rejection rate suggests model may be struggling with anti-cheat constraints")
-        elif final_rejection_rate < 0.05:
-            print("✅ Low rejection rate indicates model learned to avoid cheating")
+        if curriculum_enabled:
+            print(f"   Final curriculum stage: {train_state.current_curriculum_stage}")
+            curriculum_status = get_curriculum_status(train_state.model)
+            if curriculum_status:
+                print(f"   Final constraints: max_path_ratio={curriculum_status['max_path_ratio']:.2f}, "
+                      f"path_weight={curriculum_status['path_weight']:.0f}")
     
     wandb.finish()
 
