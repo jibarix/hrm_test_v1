@@ -1,54 +1,22 @@
 name: hrm_v1
-channels:
-  - defaults
-  - conda-forge
-  - pytorch
-  - nvidia
+channels: [conda-forge, defaults]
 dependencies:
-  # Core Python
   - python=3.10
   - pip
-  
-  # Essential Scientific Computing
   - numpy
   - pandas
   - scikit-learn
-  
-  # PyTorch with CUDA support (matching your CUDA 12.6)
-  - pytorch>=2.0
-  - torchvision
-  - torchaudio
-  - pytorch-cuda=12.4  # Closest available to your CUDA 12.6
-  
-  # ML/DL utilities
-  - einops
-  - tqdm
-  - pydantic>=2.0
-  
-  # Development tools for Windows compilation
-  - ninja
-  - packaging
-  - wheel
-  - setuptools
-  - setuptools-scm
-  - m2w64-toolchain  # Windows-specific build tools
-  - libpython
-  
-  # Pip dependencies
+  - jupyter
+  - ipykernel
+  - matplotlib
+  - seaborn
   - pip:
-      # Core HRM dependencies
-      - coolname
-      - argdantic
+      - einops
+      - transformers
+      - accelerate
+      - huggingface_hub
       - wandb
       - omegaconf
       - hydra-core
-      - huggingface_hub
-      
-      # Try adam-atan2 after environment setup
-      # adam-atan2  # Install separately after verifying CUDA
-      
-      # Additional utilities
-      - matplotlib
-      - seaborn
-      - jupyter
-      - ipykernel
+      - coolname
+      - argdantic

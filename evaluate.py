@@ -5,6 +5,13 @@ import os
 import torch
 import torch.distributed as dist
 
+# Configure PyTorch SDPA for optimal performance
+torch.backends.cuda.sdp_kernel(
+    enable_flash=True,      # Enable FlashAttention-like kernel
+    enable_mem_efficient=True,  # Enable memory-efficient attention
+    enable_math=False       # Disable fallback math implementation
+)
+
 import pydantic
 from omegaconf import OmegaConf
 from pretrain import PretrainConfig, init_train_state, evaluate, create_dataloader

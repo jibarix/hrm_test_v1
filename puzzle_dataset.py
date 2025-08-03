@@ -11,7 +11,7 @@ from models.losses import IGNORE_LABEL_ID
 from dataset.common import PuzzleDatasetMetadata
 
 
-def _sample_batch(rng: np.random.Generator, group_order: np.ndarray, puzzle_indices: np.ndarray, group_indices: np.ndarray, start_index: int, global_batch_size: int):
+def _sample_batch(rng: np.random.Generator, group_order: np.ndarray, puzzle_indices: np.ndarray, group_indices: np.ndarray, start_index: int, global_batch_size: int, max_dataset_size: int):
     # Pack examples into a full batch
     batch = []
     batch_puzzle_indices = []
@@ -29,12 +29,31 @@ def _sample_batch(rng: np.random.Generator, group_order: np.ndarray, puzzle_indi
 
         append_size = min(puzzle_size, global_batch_size - current_size)
 
+        # Generate sample indices with bounds checking
+        sample_indices = rng.choice(puzzle_size, append_size, replace=False)
+        absolute_indices = puzzle_start + sample_indices
+        
+        # Add bounds checking to prevent index out of bounds errors
+        valid_indices = absolute_indices[absolute_indices < max_dataset_size]
+        if len(valid_indices) < append_size:
+            # If we don't have enough valid indices, sample with replacement from valid range
+            valid_range = min(puzzle_size, max_dataset_size - puzzle_start)
+            if valid_range > 0:
+                sample_indices = rng.choice(valid_range, append_size, replace=True)
+                absolute_indices = puzzle_start + sample_indices
+            else:
+                # Skip this puzzle if no valid indices
+                continue
+
         # Put into batch
-        batch_puzzle_indices.append(np.full(append_size, puzzle_id, dtype=np.int32))
-        batch.append(puzzle_start + np.random.choice(puzzle_size, append_size, replace=False))
+        batch_puzzle_indices.append(np.full(len(absolute_indices), puzzle_id, dtype=np.int32))
+        batch.append(absolute_indices)
 
-        current_size += append_size
+        current_size += len(absolute_indices)
 
+    if len(batch) == 0:
+        return start_index, np.array([]), np.array([])
+    
     return start_index, np.concatenate(batch), np.concatenate(batch_puzzle_indices)
 
 
@@ -153,6 +172,9 @@ class PuzzleDataset(IterableDataset):
             # Increase epoch count
             self._iters += 1
 
+            # Get dataset size for bounds checking
+            max_dataset_size = len(dataset["inputs"])
+
             # Randomly shuffle groups
             rng = np.random.Generator(np.random.Philox(seed=self.config.seed + self._iters))
 
@@ -167,7 +189,12 @@ class PuzzleDataset(IterableDataset):
                     group_indices=dataset["group_indices"],
                     start_index=start_index,
                     global_batch_size=self.config.global_batch_size,
+                    max_dataset_size=max_dataset_size,  # Add bounds checking
                 )
+
+                # Skip if no valid batch was generated
+                if len(batch_indices) == 0:
+                    continue
 
                 # Select current rank and collate
                 global_effective_batch_size = batch_puzzle_indices.size  # Global effective batch size, excluding pads
@@ -178,6 +205,19 @@ class PuzzleDataset(IterableDataset):
 
                 batch_indices        = batch_indices       [self.config.rank * self.local_batch_size: (self.config.rank + 1) * self.local_batch_size]
                 batch_puzzle_indices = batch_puzzle_indices[self.config.rank * self.local_batch_size: (self.config.rank + 1) * self.local_batch_size]
+                
+                # Additional bounds check before accessing data
+                valid_batch_indices = batch_indices[batch_indices < max_dataset_size]
+                if len(valid_batch_indices) != len(batch_indices):
+                    print(f"Warning: Some batch indices were out of bounds. Truncating batch from {len(batch_indices)} to {len(valid_batch_indices)}")
+                    # Adjust both arrays to same length
+                    min_len = min(len(valid_batch_indices), len(batch_puzzle_indices))
+                    batch_indices = valid_batch_indices[:min_len]
+                    batch_puzzle_indices = batch_puzzle_indices[:min_len]
+                
+                if len(batch_indices) == 0:
+                    continue
+                    
                 batch = self._collate_batch({
                     "inputs": dataset["inputs"][batch_indices],
                     "labels": dataset["labels"][batch_indices],

@@ -10,6 +10,23 @@ import torch.distributed as dist
 from torch import nn
 from torch.utils.data import DataLoader
 
+# Configure PyTorch SDPA for optimal performance (updated for PyTorch 2.5+)
+try:
+    # Try new API first (PyTorch 2.5+)
+    from torch.nn.attention import SDPBackend
+    torch.nn.attention.sdpa_kernel(backends=[SDPBackend.FLASH_ATTENTION, SDPBackend.EFFICIENT_ATTENTION])
+except (AttributeError, ImportError):
+    try:
+        # Fallback to older API
+        torch.backends.cuda.sdp_kernel(
+            enable_flash=True,
+            enable_mem_efficient=True,
+            enable_math=False
+        )
+    except:
+        # If both fail, continue with defaults
+        pass
+
 import tqdm
 import wandb
 import coolname
