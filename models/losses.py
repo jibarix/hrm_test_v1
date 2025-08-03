@@ -301,22 +301,28 @@ class CurriculumScheduler:
             }
         
         # Find current curriculum stage
-        current_constraints = self.curriculum_stages[0] if self.curriculum_stages else {}
+        current_stage = self.curriculum_stages[0] if self.curriculum_stages else {}
         stage_index = 0
         
         for i, stage in enumerate(self.curriculum_stages):
             if step >= stage['start_step']:
-                current_constraints = stage
+                current_stage = stage
                 stage_index = i
             else:
                 break
         
-        # Add stage identification
+        # FIXED: Create a mutable copy to avoid OmegaConf struct error
+        if hasattr(current_stage, '_content'):  # OmegaConf DictConfig
+            current_constraints = dict(current_stage)
+        else:  # Regular dict
+            current_constraints = current_stage.copy()
+        
+        # Add stage identification metadata
         current_constraints['stage_name'] = f'stage_{stage_index + 1}'
         current_constraints['stage_index'] = stage_index
                 
         return current_constraints
-    
+        
     def should_apply_constraint(self, step, constraint_name):
         """Check if specific constraint should be applied at current step"""
         constraints = self.get_current_constraints(step)

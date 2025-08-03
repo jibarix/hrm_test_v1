@@ -19,7 +19,7 @@ arch:
   
   # ENABLE CURRICULUM LEARNING
   curriculum_learning: true
-  warmup_steps: 500                              # Steps of free exploration
+  warmup_steps: 100                              # Steps of free exploration
   max_consecutive_rejections: 25                 # Higher tolerance during transitions
   
   # 5-STAGE CURRICULUM PROGRESSION
@@ -191,9 +191,9 @@ arch:
 # ========================================================================
 
 # Batch size and training duration (extended for curriculum)
-global_batch_size: 32                          # Conservative for 8GB VRAM
-epochs: 6000                                   # Extended for full curriculum (was 2000)
-eval_interval: 200                             # Evaluate every 200 epochs
+global_batch_size: 64                          # Conservative for 8GB VRAM
+epochs: 2000                                   # Extended for full curriculum (was 2000)
+eval_interval: 100                             # Evaluate every 200 epochs
 checkpoint_every_eval: true                    # Save checkpoints at each eval
 
 # Learning rates (curriculum-friendly)
