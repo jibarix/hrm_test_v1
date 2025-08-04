@@ -22,17 +22,17 @@ arch:
     loss_type: stablemax_cross_entropy
     
     # SPATIAL CONNECTIVITY FIX - Core parameters
-    enable_spatial_loss: true          # Enable the fundamental spatial fix
+    enable_spatial_loss: false         # Enable the fundamental spatial fix
     spatial_penalty_weight: 10.0       # Penalty strength for impossible spatial jumps
     enable_connectivity_loss: false    # Start simple - disable additional connectivity check
     connectivity_weight: 5.0           # (unused when connectivity disabled)
     
     # HYBRID LOSS APPROACH - New parameters
-    enable_focal_loss: true            # Use focal loss for class imbalance
-    focal_alpha: 0.25                  # Recommended alpha value
-    focal_gamma: 2.0                   # Recommended gamma value
-    enable_dice_loss: true             # Add dice loss for path overlap
-    dice_weight: 5.0                   # Weight for dice loss component
+    enable_focal_loss: false            # Use focal loss for class imbalance
+    focal_alpha: 0.25                   # Recommended alpha value
+    focal_gamma: 2.0                    # Recommended gamma value
+    enable_dice_loss: false             # Add dice loss for path overlap
+    dice_weight: 5.0                    # Weight for dice loss component
     
     # Grid and token configuration (simplified 6-token system)
     grid_width: 40                     # 40×40 grid dimensions
@@ -40,21 +40,21 @@ arch:
 
   # ACT (Adaptive Computation Time) settings
   halt_exploration_prob: 0.1           # Standard exploration probability
-  halt_max_steps: 16                   # Max reasoning steps
+  halt_max_steps: 8                    # Max reasoning steps
 
   # Hierarchical reasoning cycles
-  H_cycles: 2                          # High-level planning cycles
-  L_cycles: 4                          # Low-level execution cycles
+  H_cycles: 1                          # High-level planning cycles
+  L_cycles: 2                          # Low-level execution cycles
 
   # Transformer architecture (laptop-optimized)
-  H_layers: 4                          # High-level module layers
-  L_layers: 4                          # Low-level module layers
-  hidden_size: 256                     # Model dimension (reduced for 8GB VRAM)
-  num_heads: 4                         # Attention heads (reduced for efficiency)
+  H_layers: 2                          # High-level module layers
+  L_layers: 2                          # Low-level module layers
+  hidden_size: 64                      # Model dimension (reduced for 8GB VRAM)
+  num_heads: 2                         # Attention heads (reduced for efficiency)
   expansion: 4                         # FFN expansion ratio
 
   # Embeddings
-  puzzle_emb_ndim: 256                 # Same as hidden_size
+  puzzle_emb_ndim: 64                  # Same as hidden_size
 
   # Position encodings
   pos_encodings: rope                  # Rotary position embeddings
@@ -65,26 +65,26 @@ arch:
   forward_dtype: bfloat16              # Mixed precision training
 
 # Training hyperparameters (laptop-optimized)
-global_batch_size: 32                 # Conservative for 8GB VRAM
-epochs: 2000                          # Suitable for 1K dataset
-eval_interval: 100                    # Frequent evaluation for debugging
+global_batch_size: 16                 # Conservative for 8GB VRAM
+epochs: 200                           # Suitable for 1K dataset
+eval_interval: 20                     # Frequent evaluation for debugging
 checkpoint_every_eval: true           # Save checkpoints at each eval
 
 # Learning rates
-lr: 1e-4                              # Main learning rate
+lr: 5e-5                              # Main learning rate
 lr_min_ratio: 0.1                     # LR decay to 10% of original
-lr_warmup_steps: 200                  # Short warmup for small dataset
+lr_warmup_steps: 50                   # Short warmup for small dataset
 
 # Optimizer settings (Adam-like, as in paper)
 beta1: 0.9                            # Adam beta1
 beta2: 0.95                           # Adam beta2 (slightly higher than default)
 
 # Regularization
-weight_decay: 1.0                     # Strong regularization for small dataset
-puzzle_emb_weight_decay: 1.0          # Strong puzzle embedding regularization
+weight_decay: 0.1                     # Strong regularization for small dataset
+puzzle_emb_weight_decay: 0.1          # Strong puzzle embedding regularization
 
 # Puzzle embedding learning rate
-puzzle_emb_lr: 1e-4                   # Same as main LR for simplicity
+puzzle_emb_lr: 5e-5                   # Same as main LR for simplicity
 
 # Project and run naming (updated for simplified pathfinding)
 project_name: null                    # Auto-generate: "Simple-pathfinding-1k ACT-torch"

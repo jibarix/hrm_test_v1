@@ -263,25 +263,6 @@ def predict():
     return jsonify({"path": predicted_path_sequence.cpu().tolist()})
 ```
 
-## 🏆 Results & Validation
-
-### Training Success Metrics
-
-**Healthy Learning Indicators**:
-- **`path_f1`** > 0.8 (balanced precision/recall)
-- **`start_end_connectivity`** > 0.8 (actually connects start→end)  
-- **`path_efficiency`** ≈ 1.0 (reasonable path length)
-- **`valid_path_ratio`** > 0.95 (paths on roads only)
-- **Gradual accuracy rise** over 200+ steps (not instant)
-
-### Live Evaluation Results
-
-**Expected Performance**:
-- **Runtime**: 1-2 hours training (similar to Maze 30x30)
-- **Accuracy**: 80-95% on routing tasks
-- **Generalization**: Works on unseen traffic/time combinations
-- **Constraint compliance**: Respects vehicle road restrictions
-
 ## 🎓 Key Lessons Learned
 
 ### 1. **Domain Knowledge Matters**
