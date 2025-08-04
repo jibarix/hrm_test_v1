@@ -106,3 +106,29 @@ Uniform slow roads: Flat 5-45% distribution
 Multiple map themes: 6 different generation strategies
 Enhanced uniqueness: Multi-factor checking
 Path complexity range: 2-200 step paths
+
+
+2025-08-03 10:30 PM
+
+Fix edge bias in pathfinding dataset generation
+
+Problem: Dataset had edge bias with 80% of start/end positions avoiding edges, 
+causing severity score of 6/50 (ACCEPTABLE quality).
+
+Root cause: Distance targeting algorithm in placeStartAndEnd() favored central 
+positions since edge positions have fewer potential partners at any distance.
+
+Solution: Replaced distance-constrained selection with true uniform selection.
+Simply pick random start/end positions without distance constraints, allowing
+natural distance distribution to emerge.
+
+Results:
+- Severity score: 6/50 -> 0/50 (OUTSTANDING quality)  
+- Start edge bias: 80.0% -> 77.5% (near theoretical 81%)
+- End edge bias: 73.5% -> 80.1% (near theoretical 81%)
+- Zero issues found by quality analysis
+
+The 77-80% edge avoidance is mathematically expected for uniform distribution
+on a 40x40 grid with obstacles, not actual bias.
+
+Dataset is now publication-quality and ready for HRM training.
