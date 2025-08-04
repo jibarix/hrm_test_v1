@@ -8,13 +8,13 @@ hydra:
   output_subdir: null
 
 # Data path
-data_path: data/logistics-routing-1k
+data_path: data/city-logistics-1k
 
 # Hyperparams - Training
-global_batch_size: 768
+global_batch_size: 256
 
-epochs: 100000
-eval_interval: 10000
+epochs: 5
+eval_interval: 1
 checkpoint_every_eval: True
 
 lr: 1e-4
@@ -29,3 +29,22 @@ puzzle_emb_weight_decay: 0.1
 
 # Hyperparams - Puzzle embeddings training
 puzzle_emb_lr: 1e-2
+
+
+# **HRM Hyperparameter Analysis Table**
+# | Parameter | Purpose | Training Effect | Paper/Code Context | Original Value | Our Value |
+# |-----------|---------|-----------------|-------------------|----------------|-----------|
+# | **`data_path`** | Dataset location | Determines which dataset to train on | Paper trains on ARC-AGI (~1000 examples) | `data/arc-aug-1000` | `data/logistics-routing-1k` |
+# | **`global_batch_size`** | Total samples per gradient step | **Critical**: Controls gradient noise vs memory. Large batches = stable gradients, better GPU utilization | Paper: "Using only 1000 training samples" - large batch processes multiple samples simultaneously | **768** | **32** (24x smaller) |
+# | **`epochs`** | Full dataset passes | **Core claim**: Paper shows convergence with massive repetition of small dataset | "With only 1000 input-output examples... HRM learns to solve problems" - Heavy repetition is key | **100,000** | **1,000** (100x fewer) |
+# | **`eval_interval`** | Evaluation frequency (epochs) | Controls training monitoring vs compute cost | Paper evaluates periodically to track convergence | **10,000** | **100** (100x more frequent) |
+# | **`checkpoint_every_eval`** | Save model at each eval | Storage vs recovery trade-off | Standard practice for long training runs | `True` | `True` ✓ |
+# | **`lr`** | Base learning rate | **Fundamental**: Controls gradient step size. Too high = instability, too low = slow convergence | Code uses AdamATan2 optimizer with cosine scheduling | **1e-4** | **1e-4** ✓ |
+# | **`lr_min_ratio`** | Cosine schedule minimum | **Key difference**: 1.0 = constant LR, <1.0 = decaying LR | Paper uses `cosine_schedule_with_warmup_lr_lambda` - likely constant for stability | **1.0** (constant) | **0.1** (decays to 10%) |
+# | **`lr_warmup_steps`** | Gradual LR increase steps | Prevents early training instability, especially important for large models | Standard practice - gradual ramp to prevent gradient explosion | **2,000** | **100** (20x shorter) |
+# | **`beta1`** | Adam momentum parameter | Controls gradient momentum - higher = more smoothing | Paper: "AdamW optimizer" - standard Adam parameters | **0.9** | **0.9** ✓ |
+# | **`beta2`** | Adam second moment | Controls adaptive learning rates per parameter | Paper: "betas=(config.beta1, config.beta2)" | **0.95** | **0.95** ✓ |
+# | **`weight_decay`** | L2 regularization strength | Prevents overfitting by penalizing large weights | Paper: "Standard hyperparameter settings for LM, as used in Llama" | **0.1** | **0.1** ✓ |
+# | **`puzzle_emb_weight_decay`** | Regularization for puzzle embeddings | **HRM-specific**: Sparse embeddings need different regularization | Code: `CastedSparseEmbeddingSignSGD_Distributed` - separate optimizer for puzzle embeddings | **0.1** | **0.1** ✓ |
+# | **`puzzle_emb_lr`** | Learning rate for puzzle embeddings | **HRM Innovation**: Puzzle embeddings use SignSGD, need higher LR than main model | Code: "SignSGD with decoupled weight decay" - higher LR compensates for sign-only gradients | **1e-2** | **1e-2** ✓ |
+
