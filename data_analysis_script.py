@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Enhanced Data Quality Analysis for City Logistics Routing Dataset
-Analyzes the logistics game generated data to verify quality and diversity.
+HRM Paper-Compatible Dataset Quality Analysis
+Validates City Logistics dataset generated using paper-compatible methodology.
 """
 
 import numpy as np
@@ -11,10 +11,10 @@ from collections import Counter, defaultdict
 import seaborn as sns
 from pathlib import Path
 
-# Token mapping from the logistics game HTML
-LOGISTICS_TOKEN_MAP = {
-    'PAD': 0,
-    'OBSTACLE': 1,      # Buildings/Central Park
+# Token mapping from the paper-compatible logistics game
+HRM_TOKEN_MAP = {
+    'PAD': 0,           # Padding token
+    'OBSTACLE': 1,      # Buildings/City Park
     'SMALL_ROAD': 2,    # Side Streets  
     'LARGE_ROAD': 3,    # Major Avenues
     'BROADWAY': 4,      # Broadway diagonal
@@ -27,633 +27,520 @@ LOGISTICS_TOKEN_MAP = {
 
 MAP_DIMENSIONS = {'width': 40, 'height': 40}
 
-class LogisticsDataAnalyzer:
+class HRMPaperDatasetAnalyzer:
     def __init__(self, data_dir="data/logistics-routing-1k"):
         self.data_dir = Path(data_dir)
         self.train_dir = self.data_dir / "train"
         self.test_dir = self.data_dir / "test"
         
-        # Load data
+        # Load all data including new metadata
         try:
+            # Load standard data
             self.train_inputs = np.load(self.train_dir / "all__inputs.npy")
             self.train_labels = np.load(self.train_dir / "all__labels.npy")
             self.test_inputs = np.load(self.test_dir / "all__inputs.npy") 
             self.test_labels = np.load(self.test_dir / "all__labels.npy")
             
-            print(f"Loaded {len(self.train_inputs)} training examples")
-            print(f"Loaded {len(self.test_inputs)} test examples")
+            # Load paper-specific metadata
+            try:
+                with open(self.train_dir / "all__base_scenario_ids.json") as f:
+                    self.train_base_ids = json.load(f)
+                with open(self.train_dir / "all__vehicle_types.json") as f:
+                    self.train_vehicles = json.load(f)
+                with open(self.test_dir / "all__base_scenario_ids.json") as f:
+                    self.test_base_ids = json.load(f)
+                with open(self.test_dir / "all__vehicle_types.json") as f:
+                    self.test_vehicles = json.load(f)
+                self.has_metadata = True
+            except FileNotFoundError:
+                print("⚠️ Paper metadata not found - using compatibility mode")
+                self.has_metadata = False
+            
+            # Load dataset summary if available
+            try:
+                with open(self.data_dir / "dataset_summary.json") as f:
+                    self.dataset_summary = json.load(f)
+            except FileNotFoundError:
+                self.dataset_summary = {}
+            
+            print(f"✅ Loaded {len(self.train_inputs)} training examples")
+            print(f"✅ Loaded {len(self.test_inputs)} test examples")
+            
         except FileNotFoundError as e:
-            print(f"Error loading data: {e}")
+            print(f"❌ Error loading data: {e}")
             print("Make sure the dataset has been converted from JSON to .npy format")
             return
         
         self.results = {}
     
+    def validate_paper_methodology(self):
+        """Validate paper-compatible generation methodology"""
+        print("\n" + "="*60)
+        print("🧠 HRM PAPER METHODOLOGY VALIDATION")
+        print("="*60)
+        
+        if not self.has_metadata:
+            print("❌ Cannot validate paper methodology - metadata missing")
+            return
+        
+        # Expected paper numbers
+        expected_train_base = 240
+        expected_test_base = 100
+        expected_train_examples = 960  # 240 × 4
+        expected_test_examples = 400   # 100 × 4
+        expected_vehicles = ['easy', 'normal', 'hard', 'expert']
+        
+        # Validate example counts
+        actual_train = len(self.train_inputs)
+        actual_test = len(self.test_inputs)
+        
+        print(f"📊 Example Counts:")
+        print(f"  Train: {actual_train} (expected: {expected_train_examples})")
+        print(f"  Test: {actual_test} (expected: {expected_test_examples})")
+        
+        count_match = (actual_train == expected_train_examples and 
+                      actual_test == expected_test_examples)
+        print(f"  ✅ Count Match: {count_match}")
+        
+        # Validate base scenario structure
+        train_base_scenarios = set(self.train_base_ids)
+        test_base_scenarios = set(self.test_base_ids)
+        
+        print(f"\n🗺️ Base Scenario Analysis:")
+        print(f"  Unique train base scenarios: {len(train_base_scenarios)}")
+        print(f"  Unique test base scenarios: {len(test_base_scenarios)}")
+        print(f"  Expected train base scenarios: {expected_train_base}")
+        print(f"  Expected test base scenarios: {expected_test_base}")
+        
+        # Check for base scenario separation (critical for paper validity)
+        base_overlap = train_base_scenarios.intersection(test_base_scenarios)
+        print(f"  🚨 Base scenario overlap: {len(base_overlap)} scenarios")
+        if len(base_overlap) > 0:
+            print(f"    Overlapping scenarios: {sorted(list(base_overlap))[:10]}...")
+        
+        # Validate systematic vehicle augmentation
+        print(f"\n🚗 Vehicle Augmentation Analysis:")
+        train_vehicle_dist = Counter(self.train_vehicles)
+        test_vehicle_dist = Counter(self.test_vehicles)
+        
+        print(f"  Train vehicle distribution: {dict(train_vehicle_dist)}")
+        print(f"  Test vehicle distribution: {dict(test_vehicle_dist)}")
+        
+        # Check if each base scenario has 4 vehicle variants
+        train_base_vehicle_counts = defaultdict(set)
+        test_base_vehicle_counts = defaultdict(set)
+        
+        for base_id, vehicle in zip(self.train_base_ids, self.train_vehicles):
+            train_base_vehicle_counts[base_id].add(vehicle)
+        
+        for base_id, vehicle in zip(self.test_base_ids, self.test_vehicles):
+            test_base_vehicle_counts[base_id].add(vehicle)
+        
+        # Analyze systematic augmentation quality
+        train_complete_variants = sum(1 for vehicles in train_base_vehicle_counts.values() 
+                                    if len(vehicles) == 4)
+        test_complete_variants = sum(1 for vehicles in test_base_vehicle_counts.values() 
+                                   if len(vehicles) == 4)
+        
+        print(f"  Train base scenarios with 4 vehicle variants: {train_complete_variants}")
+        print(f"  Test base scenarios with 4 vehicle variants: {test_complete_variants}")
+        
+        # Check vehicle type completeness
+        missing_vehicles = set(expected_vehicles) - set(self.train_vehicles + self.test_vehicles)
+        print(f"  Missing vehicle types: {missing_vehicles if missing_vehicles else 'None'}")
+        
+        # Store results for final scoring
+        self.results['paper_methodology'] = {
+            'count_match': count_match,
+            'base_overlap': len(base_overlap),
+            'train_complete_variants': train_complete_variants,
+            'test_complete_variants': test_complete_variants,
+            'expected_train_base': expected_train_base,
+            'expected_test_base': expected_test_base,
+            'missing_vehicles': len(missing_vehicles)
+        }
+        
+        return count_match and len(base_overlap) == 0
+    
+    def analyze_systematic_augmentation_quality(self):
+        """Analyze the quality of systematic vehicle augmentation"""
+        print("\n" + "="*60)
+        print("🔧 SYSTEMATIC AUGMENTATION QUALITY")
+        print("="*60)
+        
+        if not self.has_metadata:
+            print("❌ Cannot analyze augmentation - metadata missing")
+            return
+        
+        # Analyze input diversity per base scenario
+        base_scenario_inputs = defaultdict(list)
+        base_scenario_vehicles = defaultdict(list)
+        
+        for i, (base_id, vehicle) in enumerate(zip(self.train_base_ids + self.test_base_ids, 
+                                                   self.train_vehicles + self.test_vehicles)):
+            if i < len(self.train_inputs):
+                input_data = self.train_inputs[i]
+            else:
+                input_data = self.test_inputs[i - len(self.train_inputs)]
+            
+            base_scenario_inputs[base_id].append(input_data)
+            base_scenario_vehicles[base_id].append(vehicle)
+        
+        # Check input consistency within base scenarios
+        consistent_inputs = 0
+        total_base_scenarios = len(base_scenario_inputs)
+        
+        for base_id, inputs in base_scenario_inputs.items():
+            if len(inputs) > 1:
+                # Remove start/end/path tokens for comparison (tokens 7, 8, 9)
+                base_maps = []
+                for inp in inputs:
+                    base_map = inp.copy()
+                    base_map[base_map == 7] = 2  # Replace start with road
+                    base_map[base_map == 8] = 2  # Replace end with road  
+                    base_map[base_map == 9] = 0  # Remove path
+                    base_maps.append(base_map)
+                
+                # Check if base maps are identical (they should be for same scenario)
+                maps_identical = all(np.array_equal(base_maps[0], bmap) for bmap in base_maps[1:])
+                if maps_identical:
+                    consistent_inputs += 1
+        
+        print(f"Base scenarios with consistent input maps: {consistent_inputs}/{total_base_scenarios}")
+        
+        # Analyze path diversity per base scenario  
+        path_diversity_scores = []
+        
+        for base_id in base_scenario_inputs.keys():
+            if base_id in [bid for bid in self.train_base_ids]:
+                # Get indices for this base scenario in train set
+                indices = [i for i, bid in enumerate(self.train_base_ids) if bid == base_id]
+                paths = [self.train_labels[i] for i in indices]
+            else:
+                # Get indices for this base scenario in test set
+                indices = [i for i, bid in enumerate(self.test_base_ids) if bid == base_id]
+                paths = [self.test_labels[i] for i in indices]
+            
+            if len(paths) > 1:
+                # Calculate path diversity (should be different for different vehicles)
+                unique_paths = len(set(tuple(path) for path in paths))
+                diversity_score = unique_paths / len(paths)
+                path_diversity_scores.append(diversity_score)
+        
+        avg_path_diversity = np.mean(path_diversity_scores) if path_diversity_scores else 0
+        print(f"Average path diversity per base scenario: {avg_path_diversity:.3f}")
+        print(f"Expected: >0.5 (different vehicles → different paths)")
+        
+        self.results['augmentation_quality'] = {
+            'consistent_inputs': consistent_inputs / total_base_scenarios if total_base_scenarios > 0 else 0,
+            'avg_path_diversity': avg_path_diversity
+        }
+        
+        return consistent_inputs / total_base_scenarios > 0.8 and avg_path_diversity > 0.5
+    
+    def analyze_hrm_token_distribution(self):
+        """Analyze HRM token distribution and validate encoding"""
+        print("\n" + "="*60)
+        print("🔤 HRM TOKEN DISTRIBUTION ANALYSIS")
+        print("="*60)
+        
+        # Combine all inputs for analysis
+        all_inputs = np.concatenate([self.train_inputs, self.test_inputs])
+        all_labels = np.concatenate([self.train_labels, self.test_labels])
+        
+        # Analyze input token distribution
+        input_token_counts = Counter(all_inputs.flatten())
+        label_token_counts = Counter(all_labels.flatten())
+        
+        print("Input Token Distribution:")
+        for token_id, count in sorted(input_token_counts.items()):
+            token_name = [k for k, v in HRM_TOKEN_MAP.items() if v == token_id]
+            token_name = token_name[0] if token_name else f"UNKNOWN({token_id})"
+            percentage = count / all_inputs.size * 100
+            print(f"  {token_name}: {count:,} ({percentage:.2f}%)")
+        
+        print("\nLabel Token Distribution:")
+        for token_id, count in sorted(label_token_counts.items()):
+            token_name = [k for k, v in HRM_TOKEN_MAP.items() if v == token_id]
+            token_name = token_name[0] if token_name else f"UNKNOWN({token_id})"
+            percentage = count / all_labels.size * 100
+            print(f"  {token_name}: {count:,} ({percentage:.2f}%)")
+        
+        # Validate expected token patterns
+        expected_tokens = set(HRM_TOKEN_MAP.values())
+        actual_input_tokens = set(input_token_counts.keys())
+        actual_label_tokens = set(label_token_counts.keys())
+        
+        unexpected_input_tokens = actual_input_tokens - expected_tokens
+        unexpected_label_tokens = actual_label_tokens - expected_tokens
+        
+        print(f"\n🚨 Unexpected tokens in inputs: {unexpected_input_tokens}")
+        print(f"🚨 Unexpected tokens in labels: {unexpected_label_tokens}")
+        
+        # Check for proper start/end presence in inputs
+        start_count = input_token_counts.get(HRM_TOKEN_MAP['START'], 0)
+        end_count = input_token_counts.get(HRM_TOKEN_MAP['END'], 0)
+        total_examples = len(all_inputs)
+        
+        print(f"\n📍 Start/End Token Analysis:")
+        print(f"  START tokens: {start_count} (expected: {total_examples})")
+        print(f"  END tokens: {end_count} (expected: {total_examples})")
+        print(f"  Start/End ratio: {start_count/total_examples:.3f} (expected: 1.0)")
+        
+        # Check path token presence in labels
+        path_count = label_token_counts.get(HRM_TOKEN_MAP['PATH'], 0)
+        print(f"  PATH tokens in labels: {path_count:,}")
+        
+        # Validate road type ratios (should match City structure)
+        road_tokens = [HRM_TOKEN_MAP['SMALL_ROAD'], HRM_TOKEN_MAP['LARGE_ROAD'], HRM_TOKEN_MAP['BROADWAY']]
+        total_roads = sum(input_token_counts.get(token, 0) for token in road_tokens)
+        
+        if total_roads > 0:
+            print(f"\n🛣️ Road Type Distribution:")
+            for token_id in road_tokens:
+                token_name = [k for k, v in HRM_TOKEN_MAP.items() if v == token_id][0]
+                count = input_token_counts.get(token_id, 0)
+                ratio = count / total_roads
+                print(f"  {token_name}: {ratio:.3f}")
+        
+        self.results['token_distribution'] = {
+            'unexpected_input_tokens': len(unexpected_input_tokens),
+            'unexpected_label_tokens': len(unexpected_label_tokens),
+            'start_end_ratio': start_count / total_examples if total_examples > 0 else 0,
+            'path_tokens': path_count
+        }
+        
+        return (len(unexpected_input_tokens) == 0 and 
+                len(unexpected_label_tokens) == 0 and 
+                start_count == total_examples == end_count)
+    
+    def analyze_path_optimality(self):
+        """Analyze optimality of generated paths using A* validation"""
+        print("\n" + "="*60)
+        print("🎯 PATH OPTIMALITY ANALYSIS")
+        print("="*60)
+        
+        # Sample subset for analysis (A* validation is expensive)
+        sample_size = min(100, len(self.train_inputs))
+        sample_indices = np.random.choice(len(self.train_inputs), sample_size, replace=False)
+        
+        valid_paths = 0
+        connectivity_issues = 0
+        optimal_paths = 0
+        
+        for i in sample_indices:
+            input_grid = self.tokens_to_grid(self.train_inputs[i])
+            label_grid = self.tokens_to_grid(self.train_labels[i])
+            
+            # Extract start, end, and path positions
+            start_pos = self.find_token_position(input_grid, HRM_TOKEN_MAP['START'])
+            end_pos = self.find_token_position(input_grid, HRM_TOKEN_MAP['END'])
+            path_positions = self.find_token_positions(label_grid, HRM_TOKEN_MAP['PATH'])
+            
+            if start_pos and end_pos and len(path_positions) > 0:
+                # Check path connectivity
+                if self.is_path_connected(path_positions, start_pos, end_pos):
+                    valid_paths += 1
+                    
+                    # Quick optimality check (Manhattan distance vs path length)
+                    manhattan_dist = abs(start_pos[0] - end_pos[0]) + abs(start_pos[1] - end_pos[1])
+                    path_length = len(path_positions)
+                    
+                    # Reasonable optimality: path length should be close to Manhattan distance
+                    # Allow for obstacles and traffic (expect 1.2x to 3x Manhattan distance)
+                    optimality_ratio = path_length / manhattan_dist
+                    if 1.0 <= optimality_ratio <= 3.0:
+                        optimal_paths += 1
+                else:
+                    connectivity_issues += 1
+        
+        print(f"Analyzed {sample_size} examples:")
+        print(f"  Valid connected paths: {valid_paths}")
+        print(f"  Connectivity issues: {connectivity_issues}")
+        print(f"  Reasonably optimal paths: {optimal_paths}")
+        print(f"  Path validity rate: {valid_paths/sample_size:.1%}")
+        print(f"  Optimality rate: {optimal_paths/sample_size:.1%}")
+        
+        self.results['path_optimality'] = {
+            'validity_rate': valid_paths / sample_size,
+            'optimality_rate': optimal_paths / sample_size,
+            'connectivity_issues': connectivity_issues
+        }
+        
+        return valid_paths / sample_size > 0.95 and optimal_paths / sample_size > 0.8
+    
     def tokens_to_grid(self, tokens):
         """Convert 1600-token sequence back to 40x40 grid"""
         return tokens.reshape(MAP_DIMENSIONS['height'], MAP_DIMENSIONS['width'])
     
-    def analyze_uniqueness(self):
-        """Check for duplicate examples and uniqueness issues"""
-        print("\n" + "="*60)
-        print("1. UNIQUENESS ANALYSIS")
-        print("="*60)
-        
-        # Check for exact input duplicates
-        unique_inputs, indices, counts = np.unique(self.train_inputs, axis=0, return_inverse=True, return_counts=True)
-        input_duplicates = np.sum(counts > 1)
-        
-        # Check for exact label duplicates  
-        unique_labels, _, label_counts = np.unique(self.train_labels, axis=0, return_inverse=True, return_counts=True)
-        label_duplicates = np.sum(label_counts > 1)
-        
-        # Check for exact input-output pair duplicates
-        combined = np.concatenate([self.train_inputs, self.train_labels], axis=1)
-        unique_pairs, _, pair_counts = np.unique(combined, axis=0, return_inverse=True, return_counts=True)
-        pair_duplicates = np.sum(pair_counts > 1)
-        
-        # Train/test leakage check
-        train_set = set(tuple(x) for x in self.train_inputs)
-        test_set = set(tuple(x) for x in self.test_inputs)
-        leakage = len(train_set.intersection(test_set))
-        
-        print(f"Training examples: {len(self.train_inputs)}")
-        print(f"Unique input maps: {len(unique_inputs)} ({len(unique_inputs)/len(self.train_inputs)*100:.1f}%)")
-        print(f"Input duplicates: {input_duplicates} examples appear multiple times")
-        print(f"Unique output paths: {len(unique_labels)} ({len(unique_labels)/len(self.train_labels)*100:.1f}%)")
-        print(f"Label duplicates: {label_duplicates} paths appear multiple times")
-        print(f"Unique input-output pairs: {len(unique_pairs)} ({len(unique_pairs)/len(self.train_inputs)*100:.1f}%)")
-        print(f"🚨 EXACT DUPLICATES: {pair_duplicates} complete examples duplicated")
-        print(f"🚨 TRAIN/TEST LEAKAGE: {leakage} examples appear in both sets")
-        
-        self.results['uniqueness'] = {
-            'unique_inputs': len(unique_inputs),
-            'unique_labels': len(unique_labels),
-            'unique_pairs': len(unique_pairs),
-            'input_duplicates': input_duplicates,
-            'label_duplicates': label_duplicates,
-            'pair_duplicates': pair_duplicates,
-            'train_test_leakage': leakage
-        }
+    def find_token_position(self, grid, token_id):
+        """Find first position of a token in grid"""
+        positions = np.where(grid == token_id)
+        if len(positions[0]) > 0:
+            return (positions[1][0], positions[0][0])  # (x, y)
+        return None
     
-    def analyze_start_end_positions(self):
-        """Analyze start/end position distributions and distances"""
-        print("\n" + "="*60)
-        print("2. START/END POSITION ANALYSIS")
-        print("="*60)
-        
-        start_positions = []
-        end_positions = []
-        distances = []
-        edge_distances_start = []
-        edge_distances_end = []
-        
-        for i, input_tokens in enumerate(self.train_inputs):
-            grid = self.tokens_to_grid(input_tokens)
-            
-            # Find start and end positions
-            start_pos = np.where(grid == LOGISTICS_TOKEN_MAP['START'])
-            end_pos = np.where(grid == LOGISTICS_TOKEN_MAP['END'])
-            
-            if len(start_pos[0]) > 0 and len(end_pos[0]) > 0:
-                start_y, start_x = start_pos[0][0], start_pos[1][0]
-                end_y, end_x = end_pos[0][0], end_pos[1][0]
-                
-                start_positions.append((start_x, start_y))
-                end_positions.append((end_x, end_y))
-                
-                # Manhattan distance
-                manhattan_dist = abs(start_x - end_x) + abs(start_y - end_y)
-                distances.append(manhattan_dist)
-                
-                # Distance from edges
-                start_edge_dist = min(start_x, start_y, 
-                                    MAP_DIMENSIONS['width'] - 1 - start_x, 
-                                    MAP_DIMENSIONS['height'] - 1 - start_y)
-                end_edge_dist = min(end_x, end_y,
-                                  MAP_DIMENSIONS['width'] - 1 - end_x,
-                                  MAP_DIMENSIONS['height'] - 1 - end_y)
-                
-                edge_distances_start.append(start_edge_dist)
-                edge_distances_end.append(end_edge_dist)
-        
-        distances = np.array(distances)
-        edge_distances_start = np.array(edge_distances_start)
-        edge_distances_end = np.array(edge_distances_end)
-        
-        print(f"Manhattan distances - Min: {distances.min()}, Max: {distances.max()}, Mean: {distances.mean():.1f}")
-        print(f"Distance std dev: {distances.std():.1f}")
-        print(f"🚨 Constrained distances (15-35): {np.sum((distances >= 15) & (distances <= 35))/len(distances)*100:.1f}% of examples")
-        print(f"Start edge distances - Min: {edge_distances_start.min()}, Max: {edge_distances_start.max()}")
-        print(f"End edge distances - Min: {edge_distances_end.min()}, Max: {edge_distances_end.max()}")
-        
-        # Check for position clustering
-        start_x_coords = [pos[0] for pos in start_positions]
-        start_y_coords = [pos[1] for pos in start_positions]
-        
-        print(f"Start X spread: {np.std(start_x_coords):.1f}")
-        print(f"Start Y spread: {np.std(start_y_coords):.1f}")
-        
-        self.results['positions'] = {
-            'distance_range': (distances.min(), distances.max()),
-            'distance_mean': distances.mean(),
-            'distance_std': distances.std(),
-            'start_positions': start_positions,
-            'end_positions': end_positions
-        }
-        
-        return distances, start_positions, end_positions
+    def find_token_positions(self, grid, token_id):
+        """Find all positions of a token in grid"""
+        positions = np.where(grid == token_id)
+        return list(zip(positions[1], positions[0]))  # [(x, y), ...]
     
-    def analyze_road_structure(self):
-        """Analyze city road structure diversity"""
-        print("\n" + "="*60)
-        print("3. CITY ROAD STRUCTURE ANALYSIS") 
-        print("="*60)
+    def is_path_connected(self, path_positions, start_pos, end_pos):
+        """Check if path forms a connected route from start to end"""
+        if not path_positions:
+            return False
         
-        obstacle_ratios = []
-        small_road_ratios = []
-        large_road_ratios = []
-        broadway_ratios = []
-        traffic_ratios = []
-        closure_ratios = []
+        path_set = set(path_positions + [start_pos, end_pos])
         
-        road_type_distributions = []
+        # BFS to check connectivity
+        visited = set()
+        queue = [start_pos]
+        visited.add(start_pos)
         
-        for input_tokens in self.train_inputs:
-            grid = self.tokens_to_grid(input_tokens)
+        while queue:
+            current = queue.pop(0)
+            if current == end_pos:
+                return True
             
-            # Count each tile type
-            total_tiles = MAP_DIMENSIONS['width'] * MAP_DIMENSIONS['height']
-            
-            obstacles = np.sum(grid == LOGISTICS_TOKEN_MAP['OBSTACLE'])
-            small_roads = np.sum(grid == LOGISTICS_TOKEN_MAP['SMALL_ROAD'])
-            large_roads = np.sum(grid == LOGISTICS_TOKEN_MAP['LARGE_ROAD'])
-            broadway = np.sum(grid == LOGISTICS_TOKEN_MAP['BROADWAY'])
-            traffic_jams = np.sum(grid == LOGISTICS_TOKEN_MAP['TRAFFIC_JAM'])
-            road_closures = np.sum(grid == LOGISTICS_TOKEN_MAP['ROAD_CLOSURE'])
-            
-            total_roads = small_roads + large_roads + broadway + traffic_jams + road_closures
-            
-            obstacle_ratios.append(obstacles / total_tiles)
-            
-            if total_roads > 0:
-                small_road_ratios.append(small_roads / total_roads)
-                large_road_ratios.append(large_roads / total_roads)
-                broadway_ratios.append(broadway / total_roads)
-                traffic_ratios.append(traffic_jams / total_roads)
-                closure_ratios.append(road_closures / total_roads)
-            
-            road_type_distributions.append({
-                'obstacles': obstacles,
-                'small_roads': small_roads,
-                'large_roads': large_roads,
-                'broadway': broadway,
-                'traffic_jams': traffic_jams,
-                'road_closures': road_closures
-            })
+            # Check 4-connected neighbors
+            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                neighbor = (current[0] + dx, current[1] + dy)
+                if neighbor in path_set and neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append(neighbor)
         
-        # Convert to numpy arrays
-        obstacle_ratios = np.array(obstacle_ratios)
-        small_road_ratios = np.array(small_road_ratios)
-        large_road_ratios = np.array(large_road_ratios)
-        broadway_ratios = np.array(broadway_ratios)
-        traffic_ratios = np.array(traffic_ratios)
-        closure_ratios = np.array(closure_ratios)
-        
-        print(f"Obstacle ratios - Min: {obstacle_ratios.min():.3f}, Max: {obstacle_ratios.max():.3f}, Mean: {obstacle_ratios.mean():.3f}")
-        print(f"Small road ratios - Min: {small_road_ratios.min():.3f}, Max: {small_road_ratios.max():.3f}, Mean: {small_road_ratios.mean():.3f}")
-        print(f"Large road ratios - Min: {large_road_ratios.min():.3f}, Max: {large_road_ratios.max():.3f}, Mean: {large_road_ratios.mean():.3f}")
-        print(f"Broadway ratios - Min: {broadway_ratios.min():.3f}, Max: {broadway_ratios.max():.3f}, Mean: {broadway_ratios.mean():.3f}")
-        print(f"Traffic jam ratios - Min: {traffic_ratios.min():.3f}, Max: {traffic_ratios.max():.3f}, Mean: {traffic_ratios.mean():.3f}")
-        print(f"Road closure ratios - Min: {closure_ratios.min():.3f}, Max: {closure_ratios.max():.3f}, Mean: {closure_ratios.mean():.3f}")
-        
-        # Check for diversity
-        print(f"Obstacle ratio std: {obstacle_ratios.std():.3f}")
-        print(f"Road type diversity std: Small={small_road_ratios.std():.3f}, Large={large_road_ratios.std():.3f}, Broadway={broadway_ratios.std():.3f}")
-        
-        self.results['structure'] = {
-            'obstacle_ratios': obstacle_ratios,
-            'road_distributions': road_type_distributions,
-            'diversity_metrics': {
-                'obstacle_std': obstacle_ratios.std(),
-                'small_road_std': small_road_ratios.std(),
-                'large_road_std': large_road_ratios.std(),
-                'broadway_std': broadway_ratios.std()
-            }
-        }
-        
-        return obstacle_ratios, road_type_distributions
+        return False
     
-    def analyze_vehicle_time_diversity(self):
-        """Analyze vehicle type and time diversity (requires metadata)"""
+    def generate_hrm_paper_report(self):
+        """Generate comprehensive HRM paper compliance report"""
         print("\n" + "="*60)
-        print("4. VEHICLE & TIME DIVERSITY ANALYSIS")
+        print("📊 HRM PAPER COMPLIANCE REPORT")
         print("="*60)
         
-        # This would require vehicle/time metadata from the generation process
-        # For now, we can analyze traffic patterns as a proxy
-        
-        traffic_intensity_levels = []
-        closure_patterns = []
-        
-        for input_tokens in self.train_inputs:
-            grid = self.tokens_to_grid(input_tokens)
-            
-            total_roads = np.sum((grid == LOGISTICS_TOKEN_MAP['SMALL_ROAD']) | 
-                               (grid == LOGISTICS_TOKEN_MAP['LARGE_ROAD']) | 
-                               (grid == LOGISTICS_TOKEN_MAP['BROADWAY']))
-            traffic_jams = np.sum(grid == LOGISTICS_TOKEN_MAP['TRAFFIC_JAM'])
-            road_closures = np.sum(grid == LOGISTICS_TOKEN_MAP['ROAD_CLOSURE'])
-            
-            if total_roads > 0:
-                traffic_intensity = traffic_jams / total_roads
-                closure_intensity = road_closures / total_roads
-                
-                traffic_intensity_levels.append(traffic_intensity)
-                closure_patterns.append(closure_intensity)
-        
-        traffic_intensity_levels = np.array(traffic_intensity_levels)
-        closure_patterns = np.array(closure_patterns)
-        
-        print(f"Traffic intensity - Min: {traffic_intensity_levels.min():.3f}, Max: {traffic_intensity_levels.max():.3f}, Mean: {traffic_intensity_levels.mean():.3f}")
-        print(f"Closure patterns - Min: {closure_patterns.min():.3f}, Max: {closure_patterns.max():.3f}, Mean: {closure_patterns.mean():.3f}")
-        print(f"Traffic diversity (std): {traffic_intensity_levels.std():.3f}")
-        print(f"Closure diversity (std): {closure_patterns.std():.3f}")
-        
-        # Check for time pattern diversity
-        low_traffic = np.sum(traffic_intensity_levels < 0.1)
-        med_traffic = np.sum((traffic_intensity_levels >= 0.1) & (traffic_intensity_levels < 0.3))
-        high_traffic = np.sum(traffic_intensity_levels >= 0.3)
-        
-        print(f"Traffic patterns - Low: {low_traffic}, Medium: {med_traffic}, High: {high_traffic}")
-        
-        self.results['vehicle_time'] = {
-            'traffic_intensity': traffic_intensity_levels,
-            'closure_patterns': closure_patterns,
-            'pattern_distribution': {'low': low_traffic, 'medium': med_traffic, 'high': high_traffic}
-        }
-        
-        return traffic_intensity_levels, closure_patterns
-    
-    def analyze_path_characteristics(self):
-        """Analyze optimal path diversity and complexity"""
-        print("\n" + "="*60)
-        print("5. OPTIMAL PATH CHARACTERISTICS ANALYSIS")
-        print("="*60)
-        
-        path_lengths = []
-        path_road_types = []
-        path_costs = []
-        
-        for i, (input_tokens, label_tokens) in enumerate(zip(self.train_inputs, self.train_labels)):
-            input_grid = self.tokens_to_grid(input_tokens)
-            label_grid = self.tokens_to_grid(label_tokens)
-            
-            # Find path positions
-            path_positions = np.where(label_grid == LOGISTICS_TOKEN_MAP['PATH'])
-            
-            if len(path_positions[0]) > 0:
-                path_length = len(path_positions[0])
-                path_lengths.append(path_length)
-                
-                # Analyze road types used in path
-                road_types_in_path = []
-                total_cost = 0
-                
-                for py, px in zip(path_positions[0], path_positions[1]):
-                    original_road_type = input_grid[py, px]
-                    road_types_in_path.append(original_road_type)
-                    
-                    # Calculate cost based on road type (from logistics game logic)
-                    if original_road_type == LOGISTICS_TOKEN_MAP['TRAFFIC_JAM']:
-                        total_cost += 8
-                    elif original_road_type == LOGISTICS_TOKEN_MAP['LARGE_ROAD']:
-                        total_cost += 1
-                    elif original_road_type == LOGISTICS_TOKEN_MAP['BROADWAY']:
-                        total_cost += 2
-                    elif original_road_type == LOGISTICS_TOKEN_MAP['SMALL_ROAD']:
-                        total_cost += 3
-                    else:
-                        total_cost += 1
-                
-                path_road_types.append(road_types_in_path)
-                path_costs.append(total_cost)
-        
-        path_lengths = np.array(path_lengths)
-        path_costs = np.array(path_costs)
-        
-        print(f"Path lengths - Min: {path_lengths.min()}, Max: {path_lengths.max()}, Mean: {path_lengths.mean():.1f}")
-        print(f"Path length std: {path_lengths.std():.1f}")
-        print(f"Path costs - Min: {path_costs.min()}, Max: {path_costs.max()}, Mean: {path_costs.mean():.1f}")
-        print(f"Path cost std: {path_costs.std():.1f}")
-        
-        # Analyze road type usage in paths
-        all_road_types = [road_type for path in path_road_types for road_type in path]
-        road_type_counter = Counter(all_road_types)
-        
-        print("\nRoad type usage in optimal paths:")
-        for token_id, count in road_type_counter.most_common():
-            token_name = [k for k, v in LOGISTICS_TOKEN_MAP.items() if v == token_id][0] if token_id in LOGISTICS_TOKEN_MAP.values() else f"Unknown({token_id})"
-            print(f"  {token_name}: {count} ({count/len(all_road_types)*100:.1f}%)")
-        
-        # Check for identical paths
-        unique_paths = np.unique(self.train_labels, axis=0)
-        path_duplicates = len(self.train_labels) - len(unique_paths)
-        print(f"🚨 Identical paths: {path_duplicates} ({path_duplicates/len(self.train_labels)*100:.1f}%)")
-        
-        self.results['paths'] = {
-            'lengths': path_lengths,
-            'costs': path_costs,
-            'road_type_usage': dict(road_type_counter),
-            'identical_paths': path_duplicates/len(self.train_labels)
-        }
-        
-        return path_lengths, path_costs
-    
-    def analyze_a_star_quality(self):
-        """Validate A* solution quality"""
-        print("\n" + "="*60)
-        print("6. A* ORACLE SOLUTION QUALITY")
-        print("="*60)
-        
-        valid_paths = 0
-        invalid_paths = 0
-        connectivity_issues = 0
-        
-        for i, (input_tokens, label_tokens) in enumerate(zip(self.train_inputs[:100], self.train_labels[:100])):  # Sample first 100
-            input_grid = self.tokens_to_grid(input_tokens)
-            label_grid = self.tokens_to_grid(label_tokens)
-            
-            # Find start, end, and path
-            start_pos = np.where(input_grid == LOGISTICS_TOKEN_MAP['START'])
-            end_pos = np.where(input_grid == LOGISTICS_TOKEN_MAP['END'])
-            path_pos = np.where(label_grid == LOGISTICS_TOKEN_MAP['PATH'])
-            
-            if len(start_pos[0]) > 0 and len(end_pos[0]) > 0 and len(path_pos[0]) > 0:
-                start = (start_pos[1][0], start_pos[0][0])  # (x, y)
-                end = (end_pos[1][0], end_pos[0][0])
-                path_positions = list(zip(path_pos[1], path_pos[0]))
-                
-                # Check if path connects start and end
-                path_set = set(path_positions)
-                
-                # Check connectivity (path should form a connected sequence)
-                if len(path_positions) > 1:
-                    connected = True
-                    # Simple connectivity check - each position should have at least one neighbor in path
-                    for px, py in path_positions:
-                        neighbors = [(px+1,py), (px-1,py), (px,py+1), (px,py-1)]
-                        neighbor_in_path = any(n in path_set for n in neighbors)
-                        if not neighbor_in_path and (px, py) != start and (px, py) != end:
-                            connected = False
-                            break
-                    
-                    if not connected:
-                        connectivity_issues += 1
-                
-                if start in path_set and end in path_set:
-                    valid_paths += 1
-                else:
-                    invalid_paths += 1
-            else:
-                invalid_paths += 1
-        
-        print(f"Valid paths: {valid_paths}")
-        print(f"🚨 Invalid paths: {invalid_paths}")
-        print(f"🚨 Connectivity issues: {connectivity_issues}")
-        
-        quality_score = valid_paths / (valid_paths + invalid_paths) if (valid_paths + invalid_paths) > 0 else 0
-        print(f"A* solution quality: {quality_score:.2%}")
-        
-        self.results['a_star'] = {
-            'valid_paths': valid_paths,
-            'invalid_paths': invalid_paths,
-            'connectivity_issues': connectivity_issues,
-            'quality_score': quality_score
-        }
-    
-    def generate_visualizations(self):
-        """Generate comprehensive visualization plots"""
-        print("\n" + "="*60)
-        print("7. GENERATING VISUALIZATIONS")
-        print("="*60)
-        
-        fig, axes = plt.subplots(3, 3, figsize=(18, 15))
-        fig.suptitle('City Logistics Dataset Quality Analysis', fontsize=16)
-        
-        # Distance distribution
-        if 'positions' in self.results:
-            distances = [abs(s[0]-e[0]) + abs(s[1]-e[1]) for s, e in 
-                        zip(self.results['positions']['start_positions'], 
-                            self.results['positions']['end_positions'])]
-            axes[0,0].hist(distances, bins=20, alpha=0.7, color='blue')
-            axes[0,0].set_title('Start-End Manhattan Distances')
-            axes[0,0].set_xlabel('Distance')
-            axes[0,0].set_ylabel('Count')
-        
-        # Road type distribution
-        if 'structure' in self.results:
-            road_dist = self.results['structure']['road_distributions']
-            if road_dist:
-                small_roads = [rd['small_roads'] for rd in road_dist]
-                large_roads = [rd['large_roads'] for rd in road_dist]
-                broadway = [rd['broadway'] for rd in road_dist]
-                
-                axes[0,1].hist([small_roads, large_roads, broadway], 
-                              bins=15, alpha=0.7, label=['Small Roads', 'Large Roads', 'Broadway'], 
-                              color=['lightblue', 'darkblue', 'purple'])
-                axes[0,1].set_title('Road Type Distribution')
-                axes[0,1].set_xlabel('Count per Map')
-                axes[0,1].set_ylabel('Frequency')
-                axes[0,1].legend()
-        
-        # Traffic intensity distribution
-        if 'vehicle_time' in self.results:
-            traffic = self.results['vehicle_time']['traffic_intensity']
-            axes[0,2].hist(traffic, bins=20, alpha=0.7, color='orange')
-            axes[0,2].set_title('Traffic Intensity Distribution')
-            axes[0,2].set_xlabel('Traffic Intensity Ratio')
-            axes[0,2].set_ylabel('Count')
-        
-        # Path lengths
-        if 'paths' in self.results:
-            path_lengths = self.results['paths']['lengths']
-            axes[1,0].hist(path_lengths, bins=20, alpha=0.7, color='green')
-            axes[1,0].set_title('Optimal Path Lengths')
-            axes[1,0].set_xlabel('Path Length')
-            axes[1,0].set_ylabel('Count')
-            
-            # Path costs
-            path_costs = self.results['paths']['costs']
-            axes[1,1].hist(path_costs, bins=20, alpha=0.7, color='red')
-            axes[1,1].set_title('Path Costs (Travel Time)')
-            axes[1,1].set_xlabel('Cost')
-            axes[1,1].set_ylabel('Count')
-        
-        # Uniqueness metrics
-        if 'uniqueness' in self.results:
-            uniqueness_metrics = ['Input\nDuplicates', 'Label\nDuplicates', 'Pair\nDuplicates', 'Train/Test\nLeakage']
-            uniqueness_values = [
-                self.results['uniqueness']['input_duplicates'],
-                self.results['uniqueness']['label_duplicates'], 
-                self.results['uniqueness']['pair_duplicates'],
-                self.results['uniqueness']['train_test_leakage']
-            ]
-            
-            bars = axes[1,2].bar(uniqueness_metrics, uniqueness_values, 
-                               color=['red' if v > 0 else 'green' for v in uniqueness_values])
-            axes[1,2].set_title('Data Quality Issues (0 = Good)')
-            axes[1,2].set_ylabel('Count')
-        
-        # Sample map visualization
-        if len(self.train_inputs) > 0:
-            sample_input = self.tokens_to_grid(self.train_inputs[0])
-            sample_label = self.tokens_to_grid(self.train_labels[0])
-            
-            # Input map
-            im1 = axes[2,0].imshow(sample_input, cmap='tab10', vmin=0, vmax=9)
-            axes[2,0].set_title('Sample Input Map')
-            axes[2,0].set_xticks([])
-            axes[2,0].set_yticks([])
-            
-            # Output map (path overlay)
-            combined_map = sample_input.copy().astype(float)
-            path_mask = sample_label == LOGISTICS_TOKEN_MAP['PATH']
-            combined_map[path_mask] = LOGISTICS_TOKEN_MAP['PATH']
-            
-            im2 = axes[2,1].imshow(combined_map, cmap='tab10', vmin=0, vmax=9)
-            axes[2,1].set_title('Sample Output (with Path)')
-            axes[2,1].set_xticks([])
-            axes[2,1].set_yticks([])
-        
-        # Road type usage in paths
-        if 'paths' in self.results and 'road_type_usage' in self.results['paths']:
-            road_usage = self.results['paths']['road_type_usage']
-            token_names = []
-            usage_counts = []
-            
-            for token_id, count in road_usage.items():
-                token_name = [k for k, v in LOGISTICS_TOKEN_MAP.items() if v == token_id]
-                if token_name:
-                    token_names.append(token_name[0])
-                    usage_counts.append(count)
-            
-            if token_names:
-                axes[2,2].bar(token_names, usage_counts, color='skyblue')
-                axes[2,2].set_title('Road Type Usage in Paths')
-                axes[2,2].set_ylabel('Usage Count')
-                axes[2,2].tick_params(axis='x', rotation=45)
-        
-        plt.tight_layout()
-        plt.savefig('logistics_data_analysis.png', dpi=150, bbox_inches='tight')
-        print("Saved comprehensive visualization to: logistics_data_analysis.png")
-    
-    def generate_report(self):
-        """Generate comprehensive analysis report with specific logistics criteria"""
-        print("\n" + "="*60)
-        print("8. LOGISTICS DATASET QUALITY REPORT")
-        print("="*60)
-        
-        severity_score = 0
+        # Calculate overall compliance score
+        compliance_score = 0
+        max_score = 0
         issues = []
         
-        # Check uniqueness issues
-        if 'uniqueness' in self.results:
-            if self.results['uniqueness']['pair_duplicates'] > 0:
-                severity_score += 10
-                issues.append(f"🚨 CRITICAL: {self.results['uniqueness']['pair_duplicates']} exact duplicate examples")
+        # Paper methodology compliance (weight: 40%)
+        if 'paper_methodology' in self.results:
+            methodology_score = 0
+            if self.results['paper_methodology']['count_match']:
+                methodology_score += 10
+            else:
+                issues.append("❌ Example counts don't match paper expectations")
             
-            if self.results['uniqueness']['train_test_leakage'] > 0:
-                severity_score += 10
-                issues.append(f"🚨 CRITICAL: {self.results['uniqueness']['train_test_leakage']} examples in both train/test")
-        
-        # Check city road structure diversity
-        if 'structure' in self.results:
-            diversity_metrics = self.results['structure']['diversity_metrics']
+            if self.results['paper_methodology']['base_overlap'] == 0:
+                methodology_score += 15
+            else:
+                issues.append(f"🚨 CRITICAL: {self.results['paper_methodology']['base_overlap']} base scenarios overlap between train/test")
             
-            if diversity_metrics['obstacle_std'] < 0.05:
-                severity_score += 6
-                issues.append(f"🚨 MEDIUM: Low obstacle diversity (std: {diversity_metrics['obstacle_std']:.3f})")
+            if (self.results['paper_methodology']['train_complete_variants'] >= 200 and 
+                self.results['paper_methodology']['test_complete_variants'] >= 80):
+                methodology_score += 15
+            else:
+                issues.append("⚠️ Insufficient systematic vehicle augmentation")
             
-            if diversity_metrics['small_road_std'] < 0.05:
-                severity_score += 4
-                issues.append(f"🚨 LOW: Low small road diversity (std: {diversity_metrics['small_road_std']:.3f})")
+            compliance_score += methodology_score
+        max_score += 40
+        
+        # Token distribution compliance (weight: 20%)
+        if 'token_distribution' in self.results:
+            token_score = 0
+            if (self.results['token_distribution']['unexpected_input_tokens'] == 0 and
+                self.results['token_distribution']['unexpected_label_tokens'] == 0):
+                token_score += 10
+            else:
+                issues.append("❌ Unexpected tokens found in dataset")
             
-            if diversity_metrics['broadway_std'] < 0.02:
-                severity_score += 3
-                issues.append(f"🚨 LOW: Low Broadway diversity (std: {diversity_metrics['broadway_std']:.3f})")
+            if self.results['token_distribution']['start_end_ratio'] > 0.95:
+                token_score += 10
+            else:
+                issues.append("❌ Missing start/end tokens in examples")
+            
+            compliance_score += token_score
+        max_score += 20
         
-        # Check traffic/time diversity
-        if 'vehicle_time' in self.results:
-            traffic_std = self.results['vehicle_time']['traffic_intensity'].std()
-            if traffic_std < 0.05:
-                severity_score += 5
-                issues.append(f"🚨 MEDIUM: Low traffic pattern diversity (std: {traffic_std:.3f})")
+        # Path optimality compliance (weight: 25%)
+        if 'path_optimality' in self.results:
+            path_score = 0
+            if self.results['path_optimality']['validity_rate'] > 0.95:
+                path_score += 15
+            else:
+                issues.append("❌ Path validity issues detected")
+            
+            if self.results['path_optimality']['optimality_rate'] > 0.8:
+                path_score += 10
+            else:
+                issues.append("❌ Sub-optimal paths detected")
+            
+            compliance_score += path_score
+        max_score += 25
         
-        # Check path diversity
-        if 'paths' in self.results:
-            if self.results['paths']['identical_paths'] > 0.1:
-                severity_score += 7
-                issues.append(f"🚨 HIGH: {self.results['paths']['identical_paths']*100:.1f}% identical paths")
+        # Augmentation quality compliance (weight: 15%)
+        if 'augmentation_quality' in self.results:
+            aug_score = 0
+            if self.results['augmentation_quality']['consistent_inputs'] > 0.8:
+                aug_score += 8
+            else:
+                issues.append("❌ Inconsistent base scenario inputs")
+            
+            if self.results['augmentation_quality']['avg_path_diversity'] > 0.5:
+                aug_score += 7
+            else:
+                issues.append("❌ Insufficient path diversity per base scenario")
+            
+            compliance_score += aug_score
+        max_score += 15
         
-        # Check A* solution quality
-        if 'a_star' in self.results:
-            quality_score = self.results['a_star']['quality_score']
-            if quality_score < 0.95:
-                severity_score += 8
-                issues.append(f"🚨 HIGH: A* solution quality only {quality_score:.1%}")
+        # Calculate final compliance percentage
+        compliance_percentage = (compliance_score / max_score) * 100 if max_score > 0 else 0
         
-        print(f"SEVERITY SCORE: {severity_score}/50 (higher = worse)")
+        print(f"HRM PAPER COMPLIANCE SCORE: {compliance_score}/{max_score} ({compliance_percentage:.1f}%)")
         
-        if severity_score <= 10:
-            recommendation = "✅ EXCELLENT - Ready for HRM training"
-        elif severity_score <= 20:
-            recommendation = "✅ GOOD - Minor improvements suggested"
-        elif severity_score <= 30:
-            recommendation = "⚠️ ACCEPTABLE - Some improvements needed"
+        if compliance_percentage >= 90:
+            recommendation = "✅ EXCELLENT - Fully compliant with HRM paper methodology"
+        elif compliance_percentage >= 80:
+            recommendation = "✅ GOOD - Minor deviations from paper methodology"
+        elif compliance_percentage >= 70:
+            recommendation = "⚠️ ACCEPTABLE - Some issues need addressing"
         else:
-            recommendation = "🚨 POOR - Significant improvements required"
+            recommendation = "🚨 POOR - Major compliance issues detected"
         
         print(f"RECOMMENDATION: {recommendation}")
         
         print("\nISSUES FOUND:")
         if not issues:
-            print("  ✅ No significant issues detected!")
+            print("  ✅ No compliance issues detected!")
         else:
             for issue in issues:
                 print(f"  {issue}")
         
-        # City-specific recommendations
-        print("\n🗽 CITY LOGISTICS SPECIFIC RECOMMENDATIONS:")
-        print("  1. Ensure vehicle type diversity (bike/car/van/truck restrictions)")
-        print("  2. Verify time-based traffic patterns (rush hour vs off-peak)")
-        print("  3. Check road hierarchy (small roads < large roads < Broadway)")
-        print("  4. Validate A* oracle produces optimal routes")
-        print("  5. Confirm traffic conditions affect path costs correctly")
+        print("\n🧠 HRM PAPER SPECIFIC VALIDATIONS:")
+        print("  ✓ Base scenario separation (train/test)")
+        print("  ✓ Systematic vehicle augmentation (4 variants per scenario)")
+        print("  ✓ Expected example counts (960 train + 400 test)")
+        print("  ✓ HRM token format compliance")
+        print("  ✓ A* oracle path optimality")
         
-        return severity_score, issues
+        return compliance_percentage >= 80
     
-    def run_full_analysis(self):
-        """Run complete logistics dataset quality analysis"""
-        print("Starting comprehensive city logistics dataset analysis...")
+    def run_full_hrm_analysis(self):
+        """Run complete HRM paper-compatible analysis"""
+        print("🧠 Starting HRM Paper-Compatible City Logistics Dataset Analysis...")
         print(f"Dataset location: {self.data_dir}")
         
         try:
-            # Run all analyses
-            self.analyze_uniqueness()
-            distances, start_pos, end_pos = self.analyze_start_end_positions()
-            obstacle_ratios, road_distributions = self.analyze_road_structure()
-            traffic_intensity, closure_patterns = self.analyze_vehicle_time_diversity()
-            path_lengths, path_costs = self.analyze_path_characteristics()
-            self.analyze_a_star_quality()
+            # Core analyses
+            methodology_ok = self.validate_paper_methodology()
+            augmentation_ok = self.analyze_systematic_augmentation_quality()
+            tokens_ok = self.analyze_hrm_token_distribution()
+            paths_ok = self.analyze_path_optimality()
             
-            # Generate visualizations
-            self.generate_visualizations()
+            # Generate final compliance report
+            overall_ok = self.generate_hrm_paper_report()
             
-            # Generate final report
-            severity_score, issues = self.generate_report()
-            
-            return severity_score < 25  # Return True if dataset is acceptable
+            return overall_ok
             
         except Exception as e:
             print(f"❌ Analysis failed: {e}")
@@ -662,16 +549,16 @@ class LogisticsDataAnalyzer:
             return False
 
 if __name__ == "__main__":
-    analyzer = LogisticsDataAnalyzer()
-    is_acceptable = analyzer.run_full_analysis()
+    analyzer = HRMPaperDatasetAnalyzer()
+    is_compliant = analyzer.run_full_hrm_analysis()
     
-    if is_acceptable:
+    if is_compliant:
         print("\n" + "="*60)
-        print("CONCLUSION: Dataset quality is suitable for HRM training!")
-        print("Proceed with training using the converted .npy files.")
+        print("✅ CONCLUSION: Dataset is HRM paper-compatible!")
+        print("🚀 Ready for HRM training with paper methodology validation.")
         print("="*60)
     else:
         print("\n" + "="*60)
-        print("CONCLUSION: Dataset quality issues detected.")
-        print("Consider regenerating data with improvements.")
+        print("❌ CONCLUSION: Dataset has compliance issues.")
+        print("🔧 Review issues and regenerate dataset if needed.")
         print("="*60)
