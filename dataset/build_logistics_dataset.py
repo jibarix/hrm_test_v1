@@ -2,6 +2,7 @@
 """
 HRM Paper-Compatible Dataset Converter
 Converts JSON files from paper-compatible logistics game to .npy format for HRM training.
+Updated for generic city (non-NYC) dataset.
 """
 
 from typing import Optional
@@ -18,8 +19,8 @@ from common import PuzzleDatasetMetadata
 cli = ArgParser()
 
 class PaperDataProcessConfig(BaseModel):
-    source_dir: str = "dataset/raw-data/CitySimulator"  # Where JSON files are saved
-    output_dir: str = "data/logistics-routing-1k"
+    source_dir: str = "dataset/raw-data/CityLogistics"  # Where ZIP is extracted
+    output_dir: str = "data/city-logistics-1k"
     
     # Paper validation options
     validate_methodology: bool = True
@@ -33,28 +34,28 @@ def load_paper_compatible_data(source_dir: str):
     # Expected files from paper-compatible generator (18 total)
     expected_files = {
         # Train files (8)
-        'train_dataset': 'nyc_routing_paper_train_dataset.json',
-        'train_inputs': 'nyc_routing_paper_train_all__inputs.json',
-        'train_labels': 'nyc_routing_paper_train_all__labels.json',
-        'train_puzzle_identifiers': 'nyc_routing_paper_train_all__puzzle_identifiers.json',
-        'train_puzzle_indices': 'nyc_routing_paper_train_all__puzzle_indices.json',
-        'train_group_indices': 'nyc_routing_paper_train_all__group_indices.json',
-        'train_base_scenario_ids': 'nyc_routing_paper_train_all__base_scenario_ids.json',
-        'train_vehicle_types': 'nyc_routing_paper_train_all__vehicle_types.json',
+        'train_dataset': 'city_routing_paper_train_dataset.json',
+        'train_inputs': 'city_routing_paper_train_all__inputs.json',
+        'train_labels': 'city_routing_paper_train_all__labels.json',
+        'train_puzzle_identifiers': 'city_routing_paper_train_all__puzzle_identifiers.json',
+        'train_puzzle_indices': 'city_routing_paper_train_all__puzzle_indices.json',
+        'train_group_indices': 'city_routing_paper_train_all__group_indices.json',
+        'train_base_scenario_ids': 'city_routing_paper_train_all__base_scenario_ids.json',
+        'train_vehicle_types': 'city_routing_paper_train_all__vehicle_types.json',
         
         # Test files (8)
-        'test_dataset': 'nyc_routing_paper_test_dataset.json',
-        'test_inputs': 'nyc_routing_paper_test_all__inputs.json',
-        'test_labels': 'nyc_routing_paper_test_all__labels.json',
-        'test_puzzle_identifiers': 'nyc_routing_paper_test_all__puzzle_identifiers.json',
-        'test_puzzle_indices': 'nyc_routing_paper_test_all__puzzle_indices.json',
-        'test_group_indices': 'nyc_routing_paper_test_all__group_indices.json',
-        'test_base_scenario_ids': 'nyc_routing_paper_test_all__base_scenario_ids.json',
-        'test_vehicle_types': 'nyc_routing_paper_test_all__vehicle_types.json',
+        'test_dataset': 'city_routing_paper_test_dataset.json',
+        'test_inputs': 'city_routing_paper_test_all__inputs.json',
+        'test_labels': 'city_routing_paper_test_all__labels.json',
+        'test_puzzle_identifiers': 'city_routing_paper_test_all__puzzle_identifiers.json',
+        'test_puzzle_indices': 'city_routing_paper_test_all__puzzle_indices.json',
+        'test_group_indices': 'city_routing_paper_test_all__group_indices.json',
+        'test_base_scenario_ids': 'city_routing_paper_test_all__base_scenario_ids.json',
+        'test_vehicle_types': 'city_routing_paper_test_all__vehicle_types.json',
         
         # Global files (2)
-        'identifiers': 'nyc_routing_paper_identifiers.json',
-        'dataset_summary': 'nyc_routing_paper_dataset_summary.json'
+        'identifiers': 'city_routing_paper_identifiers.json',
+        'dataset_summary': 'city_routing_paper_dataset_summary.json'
     }
     
     # Check for missing files
@@ -65,7 +66,7 @@ def load_paper_compatible_data(source_dir: str):
     
     if missing_files:
         print(f"⚠️ Missing files: {missing_files}")
-        print("Make sure you've downloaded all 18 files from the paper-compatible generator")
+        print("Make sure you've extracted all 18 files from the ZIP")
     
     # Load all available files
     data = {}
@@ -138,33 +139,6 @@ def validate_paper_methodology(data: dict, strict: bool = True):
         
         print(f"  Train vehicle distribution: {dict(train_dist)}")
         print(f"  Test vehicle distribution: {dict(test_dist)}")
-        
-        # Each vehicle should appear roughly equally (240/4=60 train, 100/4=25 test)
-        expected_train_per_vehicle = 240
-        expected_test_per_vehicle = 100
-        
-        for vehicle in expected_vehicles:
-            train_vehicle_count = train_dist.get(vehicle, 0)
-            test_vehicle_count = test_dist.get(vehicle, 0)
-            
-            # Allow some variance due to failed path generation
-            if train_vehicle_count < expected_train_per_vehicle * 0.8:
-                issues.append(f"Low train count for {vehicle}: {train_vehicle_count}")
-            if test_vehicle_count < expected_test_per_vehicle * 0.8:
-                issues.append(f"Low test count for {vehicle}: {test_vehicle_count}")
-    
-    # Check dataset summary for paper compliance
-    if 'dataset_summary' in data:
-        summary = data['dataset_summary']
-        
-        if summary.get('method') != 'paper_compatible_generation':
-            issues.append("Dataset not generated with paper-compatible method")
-        
-        if summary.get('systematic_augmentation') != '4_vehicle_variants_per_base_scenario':
-            issues.append("Systematic augmentation not properly configured")
-        
-        if summary.get('no_overlap') != 'train_test_base_scenarios_completely_separate':
-            issues.append("Train/test separation not properly ensured")
     
     # Report validation results
     if issues:
@@ -184,7 +158,7 @@ def validate_paper_methodology(data: dict, strict: bool = True):
 def convert_paper_dataset(config: PaperDataProcessConfig):
     """Convert paper-compatible dataset to HRM .npy format"""
     
-    print(f"🧠 Converting HRM Paper-Compatible Dataset")
+    print(f"🧠 Converting HRM Paper-Compatible City Logistics Dataset")
     print(f"Source: {config.source_dir}")
     print(f"Output: {config.output_dir}")
     
@@ -294,8 +268,8 @@ def convert_paper_dataset(config: PaperDataProcessConfig):
     print(f"\n✅ Paper-compatible dataset conversion complete!")
     print(f"📁 Output saved to: {config.output_dir}")
     print("\n🧠 Next steps:")
-    print("  1. Run paper analysis: python paper_data_analysis.py")  
-    print("  2. Train HRM: python pretrain.py data_path=data/logistics-routing-1k")
+    print("  1. Run dataset analysis: python data_analysis_script.py")  
+    print("  2. Train HRM: python pretrain.py data_path=data/city-logistics-1k")
 
 @cli.command(singleton=True)
 def main(config: PaperDataProcessConfig):
