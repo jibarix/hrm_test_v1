@@ -132,3 +132,93 @@ The 77-80% edge avoidance is mathematically expected for uniform distribution
 on a 40x40 grid with obstacles, not actual bias.
 
 Dataset is now publication-quality and ready for HRM training.
+
+
+2025-08-03 11:15 PM
+
+Commit: Implement HRM-compatible Multi-Vehicle Routing Problem Data Generator
+Summary
+Created a comprehensive logistics data generator that produces exponentially complex Vehicle Routing Problems (VRP) suitable for training Hierarchical Reasoning Models, replacing the original simple pathfinding task that was too easy for HRM's capabilities.
+Problem Addressed
+
+Original pathfinding dataset was trivially solvable, causing HRM to hit 100% accuracy immediately
+HRM requires exponential complexity with backtracking necessity (similar to Sudoku-Extreme's 22 backtracks average)
+Simple A→B routing doesn't justify HRM's 27M parameter hierarchical architecture
+
+Solution Implemented
+Multi-Vehicle Routing Problem Generator with exponential complexity:
+Core Complexity Sources:
+
+Stop Ordering: 4-8 stops = 24 to 40,320 possible orders (factorial growth)
+Vehicle Assignment: Multiple vehicle types with item compatibility constraints
+Constraint Satisfaction: Time windows + capacity limits + precedence constraints
+Route Optimization: Pathfinding between assigned stops with traffic/obstacles
+
+Vehicle Types & Constraints:
+
+Small Van: 75 capacity, fuel efficient, handles standard/fragile items
+Large Truck: 150 capacity, fuel hungry, required for heavy items
+Refrigerated: 100 capacity, required for cold items
+Vehicle compatibility creates assignment complexity
+
+Scenario Features:
+
+Pickup/delivery pairs with precedence constraints (pickup before delivery)
+Time windows for deliveries (forces strategic scheduling)
+Traffic congestion and road closures (dynamic routing costs)
+Fuel management and depot return requirements
+8-15% obstacle density for realistic urban environments
+
+Forces Hierarchical Reasoning:
+
+High-level: Vehicle assignment and stop sequencing strategy
+Low-level: Optimal routing between assigned stops
+Backtracking necessity: Wrong assignments lead to constraint violations
+Multi-timescale planning: Strategic decisions affect tactical routing
+
+Technical Implementation
+Data Generation Pipeline:
+
+Generate 40×40 grid with obstacles, traffic, road closures
+Create VRP scenario with depot, vehicles, pickup/delivery pairs
+Solve using constraint-aware A* pathfinding with feasibility checking
+Convert to HRM token sequences (11-token vocabulary)
+Export in HRM-compatible format (7 JSON files matching expected structure)
+
+HRM Token Mapping:
+
+Input: Map state + depot + pickup/delivery locations (1600 tokens)
+Output: Multi-vehicle route assignments (1600 tokens)
+Vocabulary: PAD, OBSTACLE, ROAD, TRAFFIC, ROAD_CLOSURE, PICKUP, DELIVERY, DEPOT, ROUTE_V1, ROUTE_V2, ROUTE_V3
+
+Quality Assurance:
+
+Complexity analysis showing factorial growth in solution space
+Feasibility verification ensuring all constraints satisfiable
+Success rate tracking during batch generation
+Debug logging for troubleshooting failed scenarios
+
+Expected HRM Performance
+Unlike simple pathfinding where greedy methods succeed:
+
+Greedy approaches: Expected <20% success rate on complex scenarios
+Simple heuristics: Expected <50% success rate due to constraint interactions
+Requires hierarchical planning: Vehicle assignment decisions affect route feasibility
+Backtracking necessity: Initial choices may force reconsideration of entire solution
+
+Files Modified
+
+logistics_game.html: Complete rewrite from simple pathfinding to multi-vehicle VRP
+Removed marketing language, focused on clean functional implementation
+Added comprehensive constraint checking and feasibility verification
+Implemented HRM-compatible data export format
+
+Dataset Output
+Generates HRM training data matching paper specifications:
+
+1000 examples of exponentially complex routing problems
+Each example requires hierarchical reasoning to solve optimally
+Token sequences compatible with existing HRM training pipeline
+Complexity comparable to Sudoku-Extreme (paper's benchmark task)
+
+This addresses the core issue where HRM was overpowered for the original task, providing appropriately challenging scenarios that justify HRM's sophisticated hierarchical reasoning architecture.

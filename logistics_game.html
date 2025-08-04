@@ -3,142 +3,86 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🚀 ULTRA-DIVERSE: Maximum Variety Pathfinding Generator (FIXED)</title>
+    <title>HRM Logistics Data Generator</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        body {
-            font-family: 'Inter', sans-serif;
-        }
-
-        .btn {
-            transition: all 0.2s ease-in-out;
-        }
-        .btn:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-        }
-        .btn.active {
-            transform: translateY(1px);
-            box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-            background-color: #3b82f6 !important;
-            color: white !important;
-        }
-        .btn:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        .btn:disabled:hover {
-            transform: none;
-            box-shadow: none;
-        }
-        
-        .mode-btn {
-            transition: all 0.2s ease-in-out;
-        }
-        .mode-btn.active {
-            background-color: #3b82f6 !important;
-            color: white !important;
-        }
-        
-        canvas {
-            image-rendering: -moz-crisp-edges;
-            image-rendering: -webkit-crisp-edges;
-            image-rendering: pixelated;
-            image-rendering: crisp-edges;
-            border-radius: 0.5rem;
-            display: block;
-            margin: 0 auto;
-        }
-        .canvas-container {
-            width: 100%;
-            max-width: 800px;
-            aspect-ratio: 1;
-            margin: 0 auto;
-            position: relative;
-        }
+        body { font-family: 'Inter', sans-serif; }
+        .btn { transition: all 0.2s ease-in-out; }
+        .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        canvas { image-rendering: pixelated; border-radius: 0.5rem; display: block; margin: 0 auto; }
+        .canvas-container { width: 100%; max-width: 800px; aspect-ratio: 1; margin: 0 auto; position: relative; }
     </style>
 </head>
 <body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
 
     <div class="w-full max-w-6xl mx-auto bg-white rounded-xl shadow-lg p-4 sm:p-6">
         <div class="text-center mb-4">
-            <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">🚀 ULTRA-DIVERSE: Maximum Variety Generator (FIXED)</h1>
-            <p class="text-gray-500 mt-1">FIXED: True uniform positions - ZERO edge bias!</p>
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">HRM Logistics Data Generator</h1>
+            <p class="text-gray-500 mt-1">Multi-Vehicle Routing with Exponential Complexity</p>
         </div>
 
-        <!-- Generate Mode Controls -->
+        <!-- Controls -->
         <div class="flex flex-col gap-4 mb-4">
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <div class="flex items-center gap-2">
+                    <span class="font-semibold text-gray-700">Stops:</span>
+                    <select id="stops-selector" class="bg-white border border-gray-300 rounded-lg px-3 py-2">
+                        <option value="4" selected>4 Stops (24 orders)</option>
+                        <option value="5">5 Stops (120 orders)</option>
+                        <option value="6">6 Stops (720 orders)</option>
+                        <option value="7">7 Stops (5,040 orders)</option>
+                        <option value="8">8 Stops (40,320 orders)</option>
+                    </select>
+                </div>
+                <div class="flex items-center gap-2">
+                    <span class="font-semibold text-gray-700">Vehicles:</span>
+                    <select id="vehicles-selector" class="bg-white border border-gray-300 rounded-lg px-3 py-2">
+                        <option value="2" selected>2 Vehicles</option>
+                        <option value="3">3 Vehicles</option>
+                    </select>
+                </div>
+            </div>
             <div class="text-center">
-                <button id="generate-btn" class="btn bg-green-500 text-white font-bold px-6 py-2 rounded-lg shadow-lg">
-                    🗺️ Find Optimal Path
+                <button id="generate-scenario-btn" class="btn bg-blue-500 text-white font-bold px-6 py-2 rounded-lg shadow-lg">
+                    Generate Scenario
+                </button>
+                <button id="solve-btn" class="btn bg-green-500 text-white font-bold px-6 py-2 rounded-lg shadow-lg ml-2">
+                    Find Optimal Solution
                 </button>
                 <button id="collect-data-btn" class="btn bg-purple-500 text-white font-bold px-6 py-2 rounded-lg shadow-lg ml-2">
-                    🚀 Generate OUTSTANDING Dataset
+                    Generate Dataset
                 </button>
-                <button id="download-data-btn" class="btn bg-blue-500 text-white font-bold px-4 py-2 rounded-lg shadow-lg ml-2" disabled>
-                    📥 Download OUTSTANDING Data
+                <button id="download-data-btn" class="btn bg-indigo-500 text-white font-bold px-4 py-2 rounded-lg shadow-lg ml-2" disabled>
+                    Download HRM Data
                 </button>
             </div>
             <div id="data-progress" class="text-center text-sm text-gray-600 mt-2 hidden">
-                Collecting OUTSTANDING training data: <span id="progress-text">0/1000</span>
+                Collecting training data: <span id="progress-text">0/1000</span>
             </div>
         </div>
         
         <p id="status" class="text-center text-gray-600 h-6 mb-4"></p>
 
+        <!-- Scenario Info -->
+        <div id="scenario-info" class="bg-gray-50 rounded-lg p-4 mb-4 hidden">
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">Current Scenario</h3>
+            <div id="scenario-details" class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm"></div>
+        </div>
+
         <!-- Legend -->
         <div class="bg-gray-50 rounded-lg p-4 mb-4">
-            <h3 class="text-lg font-semibold text-gray-800 mb-3 text-center">🚀 ULTRA-DIVERSE: FIXED - Zero Edge Bias!</h3>
+            <h3 class="text-lg font-semibold text-gray-800 mb-3 text-center">Map Legend</h3>
             <div class="grid grid-cols-2 md:grid-cols-4 gap-2 text-sm">
-                <div class="flex items-center gap-2">
-                    <div class="w-4 h-4 rounded" style="background-color: #4a5568;"></div>
-                    <span>Obstacles</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <div class="w-4 h-4 rounded" style="background-color: #d1d5db;"></div>
-                    <span>Normal Roads</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <div class="w-4 h-4 rounded" style="background-color: #f59e0b;"></div>
-                    <span>Slow Roads (2x cost)</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <div class="w-4 h-4 rounded" style="background-color: #10b981;"></div>
-                    <span>Start Point</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <div class="w-4 h-4 rounded" style="background-color: #ef4444;"></div>
-                    <span>Destination</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <div class="w-4 h-4 rounded" style="background-color: #3b82f6;"></div>
-                    <span>Optimal Path</span>
-                </div>
-                <div class="flex items-center gap-2">
-                    <div class="w-4 h-4 rounded-full" style="background-color: #34d399;"></div>
-                    <span>Vehicle</span>
-                </div>
-            </div>
-            <div class="mt-3 pt-3 border-t border-gray-200 grid md:grid-cols-2 gap-4">
-                <div>
-                    <h4 class="font-medium text-gray-700 mb-2">🚀 CRITICAL FIX APPLIED:</h4>
-                    <div class="text-xs text-gray-600 space-y-1">
-                        <div><span class="font-medium text-red-600">❌ REMOVED:</span> Distance targeting (caused edge bias)</div>
-                        <div><span class="font-medium text-green-600">✅ FIXED:</span> True uniform position selection</div>
-                        <div><span class="font-medium text-green-600">✅ RESULT:</span> Zero edge bias expected</div>
-                        <div><span class="font-medium text-green-600">✅ TARGET:</span> Severity score 0-2/50 (OUTSTANDING)</div>
-                    </div>
-                </div>
-                <div>
-                    <h4 class="font-medium text-gray-700 mb-2">🎯 Expected OUTSTANDING Results:</h4>
-                    <div class="text-xs text-gray-600 space-y-1">
-                        <div><span class="font-medium text-blue-600">Start edge bias:</span> ~40% (was 80%)</div>
-                        <div><span class="font-medium text-blue-600">End edge bias:</span> ~40% (was 73.5%)</div>
-                        <div><span class="font-medium text-blue-600">Distance clustering:</span> Reduced</div>
-                        <div><span class="font-medium text-blue-600">Severity score:</span> 0-2/50 (OUTSTANDING)</div>
-                    </div>
-                </div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #4a5568;"></div><span>Obstacles</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #d1d5db;"></div><span>Roads</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #f59e0b;"></div><span>Traffic</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #dc2626;"></div><span>Road Closure</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #10b981;"></div><span>Pickup</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #ef4444;"></div><span>Delivery</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #8b5cf6;"></div><span>Depot</span></div>
+                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #3b82f6;"></div><span>Route</span></div>
             </div>
         </div>
 
@@ -149,822 +93,711 @@
     </div>
 
     <script>
-        // --- Configuration ---
+        // Configuration
         const MAP_DIMENSIONS = { width: 40, height: 40 };
-
-        // Token system
+        
         const COLORS = {
-            OBSTACLE: '#4a5568',    // Dark Gray (Obstacles/Buildings)
-            ROAD: '#d1d5db',        // Light Gray (Normal Roads)
-            SLOW_ROAD: '#f59e0b',   // Amber (Slow Roads - 2x cost)
-            START: '#10b981',       // Emerald (Start Point)
-            END: '#ef4444',         // Red (Destination)
-            PATH: '#3b82f6',        // Blue (Optimal Path)
-            VEHICLE: '#34d399',     // Green (Vehicle)
+            OBSTACLE: '#4a5568',
+            ROAD: '#d1d5db', 
+            TRAFFIC: '#f59e0b',
+            ROAD_CLOSURE: '#dc2626',
+            PICKUP: '#10b981',
+            DELIVERY: '#ef4444', 
+            DEPOT: '#8b5cf6',
+            ROUTE: '#3b82f6',
+            VEHICLE_1: '#34d399',
+            VEHICLE_2: '#60a5fa',
+            VEHICLE_3: '#facc15'
         };
 
         const HRM_TOKEN_MAP = {
-            PAD: 0,           // Padding token
-            OBSTACLE: 1,      // Buildings/walls  
-            ROAD: 2,          // Normal roads
-            SLOW_ROAD: 3,     // Traffic-affected roads (2x cost)
-            START: 4,         // Start point
-            END: 5,           // End point
-            PATH: 6           // Optimal route (output only)
+            PAD: 0, OBSTACLE: 1, ROAD: 2, TRAFFIC: 3, ROAD_CLOSURE: 4,
+            PICKUP: 5, DELIVERY: 6, DEPOT: 7, ROUTE_V1: 8, ROUTE_V2: 9, ROUTE_V3: 10
         };
 
         const TILE_TYPES = {
             OBSTACLE: 0,
             ROAD: 1,
-            SLOW_ROAD: 2,
+            TRAFFIC: 2,
+            ROAD_CLOSURE: 3
         };
-        
-        // --- DOM Elements ---
+
+        // Vehicle configurations
+        const VEHICLE_TYPES = {
+            SMALL_VAN: { capacity: 75, fuel: 200, fuel_efficiency: 1.0, speed: 1.2, name: "Small Van" },
+            LARGE_TRUCK: { capacity: 150, fuel: 150, fuel_efficiency: 1.5, speed: 0.8, name: "Large Truck" },
+            REFRIGERATED: { capacity: 100, fuel: 180, fuel_efficiency: 1.3, speed: 1.0, name: "Refrigerated" }
+        };
+
+        // Item types requiring specific vehicles
+        const ITEM_TYPES = {
+            STANDARD: { weight: 20, vehicle_types: ['SMALL_VAN', 'LARGE_TRUCK', 'REFRIGERATED'] },
+            HEAVY: { weight: 60, vehicle_types: ['LARGE_TRUCK'] },
+            FRAGILE: { weight: 15, vehicle_types: ['SMALL_VAN', 'REFRIGERATED'] },
+            COLD: { weight: 30, vehicle_types: ['REFRIGERATED'] }
+        };
+
+        // DOM Elements
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
-        
-        const generateBtn = document.getElementById('generate-btn');
-        const statusEl = document.getElementById('status');
+        const generateScenarioBtn = document.getElementById('generate-scenario-btn');
+        const solveBtn = document.getElementById('solve-btn');
         const collectDataBtn = document.getElementById('collect-data-btn');
         const downloadDataBtn = document.getElementById('download-data-btn');
+        const statusEl = document.getElementById('status');
+        const scenarioInfo = document.getElementById('scenario-info');
+        const scenarioDetails = document.getElementById('scenario-details');
+        const stopsSelector = document.getElementById('stops-selector');
+        const vehiclesSelector = document.getElementById('vehicles-selector');
         const dataProgress = document.getElementById('data-progress');
         const progressText = document.getElementById('progress-text');
 
-        // --- Game State ---
+        // Game State
         let grid = [];
-        let startPos = null;
-        let endPos = null;
+        let trafficGrid = [];
+        let currentScenario = null;
+        let currentSolution = null;
         let isAnimating = false;
-        let animationFrameId;
-        let tileSize = 1;
-
-        // --- 🚀 ULTRA-DIVERSE: Enhanced Data Collection ---
         let isCollectingData = false;
-        const generatedExamples = new Set(); // Track unique examples
-        const generatedHashes = new Set(); // Enhanced uniqueness tracking
+        let tileSize = 1;
+        let collectedData = [];
 
-        // --- 🚀 ULTRA-DIVERSE: Map Generation Themes ---
-        const MAP_THEMES = {
-            OPEN_FIELD: 0,      // Sparse obstacles, long sight lines
-            DENSE_URBAN: 1,     // Dense obstacles, complex navigation  
-            MAZE_LIKE: 2,       // Corridor-based, many dead ends
-            SCATTERED: 3,       // Random obstacle placement
-            BANDED: 4,          // Horizontal/vertical obstacle bands
-            CLUSTERED: 5        // Obstacle clusters with clear areas
-        };
-
-        // --- 🚀 ULTRA-DIVERSE: Enhanced Map Generation ---
-
-        /**
-         * 🚀 ULTRA-FIX 1: Uniform random number generator for flat distributions
-         */
-        function uniformRandom(min, max) {
-            return min + Math.random() * (max - min);
-        }
-
-        /**
-         * 🚀 ULTRA-FIX 2: Multiple map generation themes for maximum variety
-         */
+        // Generate map with obstacles and traffic
         function generateMap() {
-            // 🚀 Select random map theme for variety
-            const theme = Math.floor(Math.random() * Object.keys(MAP_THEMES).length);
-            
-            // 🚀 ULTRA-FIX 3: TRUE UNIFORM OBSTACLE DENSITY (8-52%)
-            const obstacleDensity = uniformRandom(0.08, 0.52); // Perfectly flat distribution
-            
-            // Initialize grid with roads
+            // Initialize with roads
             grid = Array(MAP_DIMENSIONS.height).fill(null).map(() => Array(MAP_DIMENSIONS.width).fill(TILE_TYPES.ROAD));
-
-            // Generate obstacles based on theme
-            switch(theme) {
-                case MAP_THEMES.OPEN_FIELD:
-                    generateOpenField(obstacleDensity);
-                    break;
-                case MAP_THEMES.DENSE_URBAN:
-                    generateDenseUrban(obstacleDensity);
-                    break;
-                case MAP_THEMES.MAZE_LIKE:
-                    generateMazeLike(obstacleDensity);
-                    break;
-                case MAP_THEMES.SCATTERED:
-                    generateScattered(obstacleDensity);
-                    break;
-                case MAP_THEMES.BANDED:
-                    generateBanded(obstacleDensity);
-                    break;
-                case MAP_THEMES.CLUSTERED:
-                    generateClustered(obstacleDensity);
-                    break;
-            }
-
-            // Place start and end points
-            placeStartAndEnd();
-        }
-
-        /**
-         * 🚀 Theme 1: Open field with sparse, scattered obstacles
-         */
-        function generateOpenField(obstacleDensity) {
-            const obstacleCount = Math.floor(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height * obstacleDensity);
-            const obstaclePositions = new Set();
             
-            // Prefer obstacles away from center for open feeling
-            while (obstaclePositions.size < obstacleCount) {
-                const x = Math.floor(Math.random() * MAP_DIMENSIONS.width);
-                const y = Math.floor(Math.random() * MAP_DIMENSIONS.height);
-                const key = `${x},${y}`;
-                
-                if (!obstaclePositions.has(key)) {
-                    obstaclePositions.add(key);
-                    grid[y][x] = TILE_TYPES.OBSTACLE;
-                }
-            }
-        }
-
-        /**
-         * 🚀 Theme 2: Dense urban with building blocks
-         */
-        function generateDenseUrban(obstacleDensity) {
-            const obstacleCount = Math.floor(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height * obstacleDensity);
-            let placedObstacles = 0;
-            
-            // Create building blocks (2x2 to 4x4)
-            while (placedObstacles < obstacleCount) {
-                const blockSize = 2 + Math.floor(Math.random() * 3); // 2-4
-                const startX = Math.floor(Math.random() * (MAP_DIMENSIONS.width - blockSize));
-                const startY = Math.floor(Math.random() * (MAP_DIMENSIONS.height - blockSize));
-                
-                for (let dy = 0; dy < blockSize && placedObstacles < obstacleCount; dy++) {
-                    for (let dx = 0; dx < blockSize && placedObstacles < obstacleCount; dx++) {
-                        const x = startX + dx;
-                        const y = startY + dy;
-                        if (grid[y][x] !== TILE_TYPES.OBSTACLE) {
-                            grid[y][x] = TILE_TYPES.OBSTACLE;
-                            placedObstacles++;
-                        }
-                    }
-                }
-            }
-        }
-
-        /**
-         * 🚀 Theme 3: Maze-like with corridors
-         */
-        function generateMazeLike(obstacleDensity) {
-            // Fill with obstacles first
-            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
-                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
-                    grid[y][x] = TILE_TYPES.OBSTACLE;
-                }
-            }
-            
-            // Carve out corridors to achieve desired road density  
-            const roadDensity = 1 - obstacleDensity;
-            const roadCount = Math.floor(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height * roadDensity);
-            let carvedRoads = 0;
-            
-            // Create winding corridors
-            const corridorCount = 3 + Math.floor(Math.random() * 5); // 3-7 corridors
-            for (let i = 0; i < corridorCount && carvedRoads < roadCount; i++) {
-                let x = Math.floor(Math.random() * MAP_DIMENSIONS.width);
-                let y = Math.floor(Math.random() * MAP_DIMENSIONS.height);
-                const length = 15 + Math.floor(Math.random() * 25); // 15-40 steps
-                
-                for (let j = 0; j < length && carvedRoads < roadCount; j++) {
-                    if (x >= 0 && x < MAP_DIMENSIONS.width && y >= 0 && y < MAP_DIMENSIONS.height) {
-                        if (grid[y][x] === TILE_TYPES.OBSTACLE) {
-                            grid[y][x] = TILE_TYPES.ROAD;
-                            carvedRoads++;
-                        }
-                    }
-                    
-                    // Random walk
-                    const direction = Math.floor(Math.random() * 4);
-                    switch (direction) {
-                        case 0: x++; break;
-                        case 1: x--; break;
-                        case 2: y++; break;
-                        case 3: y--; break;
-                    }
-                }
-            }
-        }
-
-        /**
-         * 🚀 Theme 4: Completely scattered random obstacles
-         */
-        function generateScattered(obstacleDensity) {
-            const obstacleCount = Math.floor(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height * obstacleDensity);
-            const obstaclePositions = new Set();
-            
-            while (obstaclePositions.size < obstacleCount) {
-                const x = Math.floor(Math.random() * MAP_DIMENSIONS.width);
-                const y = Math.floor(Math.random() * MAP_DIMENSIONS.height);
-                const key = `${x},${y}`;
-                
-                if (!obstaclePositions.has(key)) {
-                    obstaclePositions.add(key);
-                    grid[y][x] = TILE_TYPES.OBSTACLE;
-                }
-            }
-        }
-
-        /**
-         * 🚀 Theme 5: Horizontal/vertical bands
-         */
-        function generateBanded(obstacleDensity) {
-            const isHorizontal = Math.random() < 0.5;
-            const bandCount = 2 + Math.floor(Math.random() * 4); // 2-5 bands
+            // Add obstacles (8-15% coverage to ensure enough paths)
+            const obstacleRatio = 0.08 + Math.random() * 0.07;
             const totalCells = MAP_DIMENSIONS.width * MAP_DIMENSIONS.height;
-            const targetObstacles = Math.floor(totalCells * obstacleDensity);
+            const obstacleCount = Math.floor(totalCells * obstacleRatio);
             
-            for (let band = 0; band < bandCount; band++) {
-                const bandDensity = Math.random(); // Random density per band
-                
-                if (isHorizontal) {
-                    const bandHeight = Math.floor(MAP_DIMENSIONS.height / bandCount);
-                    const startY = band * bandHeight;
-                    const endY = Math.min(startY + bandHeight, MAP_DIMENSIONS.height);
-                    
-                    for (let y = startY; y < endY; y++) {
-                        for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
-                            if (Math.random() < bandDensity * obstacleDensity * bandCount) {
-                                grid[y][x] = TILE_TYPES.OBSTACLE;
-                            }
-                        }
-                    }
-                } else {
-                    const bandWidth = Math.floor(MAP_DIMENSIONS.width / bandCount);
-                    const startX = band * bandWidth;
-                    const endX = Math.min(startX + bandWidth, MAP_DIMENSIONS.width);
-                    
-                    for (let x = startX; x < endX; x++) {
-                        for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
-                            if (Math.random() < bandDensity * obstacleDensity * bandCount) {
-                                grid[y][x] = TILE_TYPES.OBSTACLE;
-                            }
-                        }
-                    }
-                }
+            for (let i = 0; i < obstacleCount; i++) {
+                let x, y;
+                do {
+                    x = Math.floor(Math.random() * MAP_DIMENSIONS.width);
+                    y = Math.floor(Math.random() * MAP_DIMENSIONS.height);
+                } while (grid[y][x] !== TILE_TYPES.ROAD);
+                grid[y][x] = TILE_TYPES.OBSTACLE;
             }
-        }
 
-        /**
-         * 🚀 Theme 6: Clustered obstacles with clear areas
-         */
-        function generateClustered(obstacleDensity) {
-            const clusterCount = 3 + Math.floor(Math.random() * 6); // 3-8 clusters
-            const obstacleCount = Math.floor(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height * obstacleDensity);
-            let placedObstacles = 0;
-            
-            for (let cluster = 0; cluster < clusterCount && placedObstacles < obstacleCount; cluster++) {
-                const centerX = Math.floor(Math.random() * MAP_DIMENSIONS.width);
-                const centerY = Math.floor(Math.random() * MAP_DIMENSIONS.height);
-                const clusterRadius = 3 + Math.floor(Math.random() * 8); // 3-10
-                const clusterDensity = 0.3 + Math.random() * 0.7; // 30-100% density within cluster
-                
-                for (let dy = -clusterRadius; dy <= clusterRadius && placedObstacles < obstacleCount; dy++) {
-                    for (let dx = -clusterRadius; dx <= clusterRadius && placedObstacles < obstacleCount; dx++) {
-                        const x = centerX + dx;
-                        const y = centerY + dy;
-                        
-                        if (x >= 0 && x < MAP_DIMENSIONS.width && y >= 0 && y < MAP_DIMENSIONS.height) {
-                            const distance = Math.sqrt(dx * dx + dy * dy);
-                            if (distance <= clusterRadius && Math.random() < clusterDensity) {
-                                if (grid[y][x] !== TILE_TYPES.OBSTACLE) {
-                                    grid[y][x] = TILE_TYPES.OBSTACLE;
-                                    placedObstacles++;
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        /**
-         * 🚀 CRITICAL FIX: TRUE UNIFORM position distribution - ZERO edge bias
-         */
-        function placeStartAndEnd() {
-            const roadPositions = [];
-            
-            // 🚀 Collect ALL road positions with ZERO bias
+            // Add traffic and road closures (reduced for better connectivity)
+            trafficGrid = grid.map(row => [...row]);
             for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
                 for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
                     if (grid[y][x] === TILE_TYPES.ROAD) {
-                        roadPositions.push({ x, y });
+                        const rand = Math.random();
+                        if (rand < 0.02) { // Reduced road closures
+                            trafficGrid[y][x] = TILE_TYPES.ROAD_CLOSURE;
+                        } else if (rand < 0.10) { // Reduced traffic
+                            trafficGrid[y][x] = TILE_TYPES.TRAFFIC;
+                        }
                     }
                 }
             }
-
-            if (roadPositions.length >= 2) {
-                // 🚀 CRITICAL FIX: TRUE UNIFORM SELECTION - NO CONSTRAINTS
-                // Simply pick two random positions - let distance distribution emerge naturally
-                let startIdx, endIdx;
-                
-                // Ensure start and end are different positions
-                do {
-                    startIdx = Math.floor(Math.random() * roadPositions.length);
-                    endIdx = Math.floor(Math.random() * roadPositions.length);
-                } while (startIdx === endIdx && roadPositions.length > 1);
-                
-                startPos = roadPositions[startIdx];
-                endPos = roadPositions[endIdx];
-                
-            } else {
-                // Emergency fallback
-                startPos = { x: 5, y: 5 };
-                endPos = { x: MAP_DIMENSIONS.width - 5, y: MAP_DIMENSIONS.height - 5 };
-            }
         }
 
-        /**
-         * 🚀 ULTRA-FIX 6: TRUE UNIFORM slow road distribution (5-45%)
-         */
-        function addSlowRoads(baseGrid) {
-            let dynamicGrid = baseGrid.map(row => [...row]);
+        // Generate complex VRP scenario
+        function generateVRPScenario() {
+            const numStops = parseInt(stopsSelector.value);
+            const numVehicles = parseInt(vehiclesSelector.value);
             
-            // 🚀 PERFECT UNIFORM SLOW ROAD RATIO (5-45%)
-            const slowRoadRatio = uniformRandom(0.05, 0.45); // Perfectly flat distribution
-            
+            // Find available positions (need enough for depot + all stops)
+            const availablePositions = [];
             for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
                 for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
-                    if (baseGrid[y][x] === TILE_TYPES.ROAD && Math.random() < slowRoadRatio) {
-                        dynamicGrid[y][x] = TILE_TYPES.SLOW_ROAD;
+                    if (trafficGrid[y][x] === TILE_TYPES.ROAD || trafficGrid[y][x] === TILE_TYPES.TRAFFIC) {
+                        availablePositions.push({x, y});
                     }
                 }
             }
 
-            return dynamicGrid;
+            if (availablePositions.length < numStops + 4) { // depot + stops + fuel stations
+                throw new Error(`Not enough positions: have ${availablePositions.length}, need ${numStops + 4}`);
+            }
+
+            // Place depot in a good central location
+            const depot = availablePositions[Math.floor(availablePositions.length / 2)];
+            const depotIndex = availablePositions.findIndex(p => p.x === depot.x && p.y === depot.y);
+            availablePositions.splice(depotIndex, 1);
+
+            // Create vehicles with different types
+            const vehicleTypeKeys = Object.keys(VEHICLE_TYPES);
+            const vehicles = [];
+            for (let i = 0; i < numVehicles; i++) {
+                const typeKey = vehicleTypeKeys[i % vehicleTypeKeys.length];
+                vehicles.push({
+                    id: i,
+                    type: typeKey,
+                    ...VEHICLE_TYPES[typeKey],
+                    position: {...depot},
+                    current_load: 0,
+                    current_fuel: VEHICLE_TYPES[typeKey].fuel
+                });
+            }
+
+            // Create pickup/delivery pairs with constraints
+            const stops = [];
+            const itemTypeKeys = Object.keys(ITEM_TYPES);
+            const numPairs = Math.floor(numStops / 2);
+            
+            for (let i = 0; i < numPairs; i++) {
+                // Select random positions for pickup and delivery
+                const pickupIdx = Math.floor(Math.random() * availablePositions.length);
+                const pickup = availablePositions.splice(pickupIdx, 1)[0];
+                
+                const deliveryIdx = Math.floor(Math.random() * availablePositions.length);
+                const delivery = availablePositions.splice(deliveryIdx, 1)[0];
+                
+                const itemType = itemTypeKeys[Math.floor(Math.random() * itemTypeKeys.length)];
+                const item = ITEM_TYPES[itemType];
+                
+                // Create time windows
+                const earliestPickup = Math.floor(Math.random() * 6); // 0-6 hours
+                const latestPickup = earliestPickup + 2;
+                const latestDelivery = latestPickup + 2 + Math.floor(Math.random() * 3); // 2-5 hours after pickup
+                
+                stops.push({
+                    id: i * 2,
+                    type: 'pickup',
+                    position: pickup,
+                    item_type: itemType,
+                    item_weight: item.weight,
+                    required_vehicles: item.vehicle_types,
+                    time_window: [earliestPickup, latestPickup],
+                    paired_with: i * 2 + 1
+                });
+                
+                stops.push({
+                    id: i * 2 + 1,
+                    type: 'delivery', 
+                    position: delivery,
+                    item_type: itemType,
+                    item_weight: item.weight,
+                    required_vehicles: item.vehicle_types,
+                    time_window: [latestPickup, latestDelivery],
+                    paired_with: i * 2,
+                    precedence: i * 2  // Must pickup before delivery
+                });
+            }
+
+            return {
+                depot,
+                vehicles,
+                stops,
+                constraints: {
+                    max_time: 12, // 12 hour working day
+                    fuel_stations: generateFuelStations(availablePositions.slice(0, Math.min(3, availablePositions.length)))
+                }
+            };
         }
 
-        /**
-         * Draws the entire map, including start/end points and a given path.
-         */
-        function drawMap(dynamicGrid, path = []) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        function generateFuelStations(positions) {
+            return positions.map((pos, i) => ({
+                id: i,
+                position: pos,
+                refuel_time: 0.5 // 30 minutes
+            }));
+        }
 
+        // A* pathfinding with costs
+        function findPath(grid, start, end) {
+            const openSet = [{...start, g: 0, f: heuristic(start, end)}];
+            const cameFrom = {};
+            const gScore = {};
+            const fScore = {};
+            
+            const key = (pos) => `${pos.x},${pos.y}`;
+            gScore[key(start)] = 0;
+            fScore[key(start)] = heuristic(start, end);
+            
+            while (openSet.length > 0) {
+                openSet.sort((a, b) => a.f - b.f);
+                const current = openSet.shift();
+                
+                if (current.x === end.x && current.y === end.y) {
+                    return reconstructPath(cameFrom, current);
+                }
+                
+                for (const neighbor of getNeighbors(current, grid)) {
+                    const tentativeG = gScore[key(current)] + getMoveCost(grid, neighbor);
+                    const neighborKey = key(neighbor);
+                    
+                    if (tentativeG < (gScore[neighborKey] || Infinity)) {
+                        cameFrom[neighborKey] = current;
+                        gScore[neighborKey] = tentativeG;
+                        fScore[neighborKey] = tentativeG + heuristic(neighbor, end);
+                        
+                        if (!openSet.find(n => n.x === neighbor.x && n.y === neighbor.y)) {
+                            openSet.push({...neighbor, g: tentativeG, f: fScore[neighborKey]});
+                        }
+                    }
+                }
+            }
+            
+            return []; // No path found
+        }
+
+        function heuristic(a, b) {
+            return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+        }
+
+        function getNeighbors(pos, grid) {
+            const neighbors = [];
+            const directions = [{x: 0, y: 1}, {x: 0, y: -1}, {x: 1, y: 0}, {x: -1, y: 0}];
+            
+            for (const dir of directions) {
+                const newX = pos.x + dir.x;
+                const newY = pos.y + dir.y;
+                
+                if (newX >= 0 && newX < MAP_DIMENSIONS.width && 
+                    newY >= 0 && newY < MAP_DIMENSIONS.height &&
+                    grid[newY][newX] !== TILE_TYPES.OBSTACLE &&
+                    grid[newY][newX] !== TILE_TYPES.ROAD_CLOSURE) {
+                    neighbors.push({x: newX, y: newY});
+                }
+            }
+            
+            return neighbors;
+        }
+
+        function getMoveCost(grid, pos) {
+            switch (grid[pos.y][pos.x]) {
+                case TILE_TYPES.ROAD: return 1;
+                case TILE_TYPES.TRAFFIC: return 3;
+                default: return 1;
+            }
+        }
+
+        function reconstructPath(cameFrom, current) {
+            const path = [current];
+            const key = (pos) => `${pos.x},${pos.y}`;
+            
+            while (cameFrom[key(current)]) {
+                current = cameFrom[key(current)];
+                path.unshift(current);
+            }
+            
+            return path;
+        }
+
+        // Complex VRP solver (simplified but functional for demo)
+        function solveVRP(scenario) {
+            const solution = {
+                vehicles: [],
+                total_cost: 0,
+                total_time: 0,
+                feasible: true
+            };
+
+            try {
+                // Group pickup/delivery pairs
+                const pairs = [];
+                const pickups = scenario.stops.filter(s => s.type === 'pickup');
+                
+                for (const pickup of pickups) {
+                    const delivery = scenario.stops.find(s => s.id === pickup.paired_with);
+                    if (delivery) {
+                        pairs.push({ pickup, delivery });
+                    }
+                }
+
+                // Simple assignment: try to assign pairs to compatible vehicles
+                const unassigned = [...pairs];
+                
+                for (const vehicle of scenario.vehicles) {
+                    const vehicleRoute = {
+                        vehicle_id: vehicle.id,
+                        vehicle_type: vehicle.type,
+                        stops: [],
+                        paths: [],
+                        total_distance: 0,
+                        total_time: 0,
+                        load_sequence: []
+                    };
+
+                    let currentPos = scenario.depot;
+                    let currentLoad = 0;
+                    let currentTime = 0;
+
+                    // Try to assign compatible pairs to this vehicle
+                    for (let i = unassigned.length - 1; i >= 0; i--) {
+                        const pair = unassigned[i];
+                        
+                        // Check if vehicle can handle this item
+                        if (!pair.pickup.required_vehicles.includes(vehicle.type)) {
+                            continue;
+                        }
+                        
+                        // Check capacity
+                        if (currentLoad + pair.pickup.item_weight > vehicle.capacity) {
+                            continue;
+                        }
+                        
+                        // Try to route to pickup
+                        const pathToPickup = findPath(trafficGrid, currentPos, pair.pickup.position);
+                        if (pathToPickup.length === 0) continue;
+                        
+                        // Try to route from pickup to delivery
+                        const pathToDelivery = findPath(trafficGrid, pair.pickup.position, pair.delivery.position);
+                        if (pathToDelivery.length === 0) continue;
+                        
+                        // Calculate timing
+                        const travelTimeToPickup = pathToPickup.length * 0.1; // 0.1 hour per cell
+                        const pickupTime = currentTime + travelTimeToPickup;
+                        
+                        // Check time window for pickup
+                        if (pickupTime < pair.pickup.time_window[0] || pickupTime > pair.pickup.time_window[1]) {
+                            continue;
+                        }
+                        
+                        const travelTimeToDelivery = pathToDelivery.length * 0.1;
+                        const deliveryTime = pickupTime + 0.25 + travelTimeToDelivery; // 15 min pickup time
+                        
+                        // Check time window for delivery
+                        if (deliveryTime > pair.delivery.time_window[1]) {
+                            continue;
+                        }
+                        
+                        // Assignment is feasible - add to route
+                        vehicleRoute.stops.push(pair.pickup.position, pair.delivery.position);
+                        vehicleRoute.paths.push(pathToPickup, pathToDelivery);
+                        vehicleRoute.total_distance += pathToPickup.length + pathToDelivery.length;
+                        vehicleRoute.load_sequence.push(`+${pair.pickup.item_weight}`, `-${pair.pickup.item_weight}`);
+                        
+                        currentPos = pair.delivery.position;
+                        currentLoad += pair.pickup.item_weight;
+                        currentTime = deliveryTime;
+                        
+                        // Remove assigned pair
+                        unassigned.splice(i, 1);
+                        break; // Only assign one pair per vehicle for simplicity
+                    }
+
+                    // Return to depot
+                    if (vehicleRoute.stops.length > 0) {
+                        const pathToDepot = findPath(trafficGrid, currentPos, scenario.depot);
+                        if (pathToDepot.length > 0) {
+                            vehicleRoute.stops.push(scenario.depot);
+                            vehicleRoute.paths.push(pathToDepot);
+                            vehicleRoute.total_distance += pathToDepot.length;
+                            vehicleRoute.total_time = currentTime + (pathToDepot.length * 0.1);
+                        }
+                    }
+
+                    if (vehicleRoute.stops.length > 0) {
+                        solution.vehicles.push(vehicleRoute);
+                    }
+                }
+
+                // Check if all pairs were assigned
+                solution.feasible = unassigned.length === 0;
+                solution.total_cost = solution.vehicles.reduce((sum, v) => sum + v.total_distance, 0);
+                solution.total_time = Math.max(...solution.vehicles.map(v => v.total_time));
+                
+                if (!solution.feasible) {
+                    console.log(`Could not assign ${unassigned.length} pairs:`, unassigned);
+                }
+
+            } catch (error) {
+                console.error('Solver error:', error);
+                solution.feasible = false;
+            }
+
+            return solution;
+        }
+
+        // Convert scenario to HRM token sequence
+        function scenarioToHRM(scenario, solution) {
+            const inputSequence = new Array(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height).fill(HRM_TOKEN_MAP.PAD);
+            
+            // Encode base map
+            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
+                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
+                    const idx = y * MAP_DIMENSIONS.width + x;
+                    switch (trafficGrid[y][x]) {
+                        case TILE_TYPES.OBSTACLE: inputSequence[idx] = HRM_TOKEN_MAP.OBSTACLE; break;
+                        case TILE_TYPES.ROAD: inputSequence[idx] = HRM_TOKEN_MAP.ROAD; break;
+                        case TILE_TYPES.TRAFFIC: inputSequence[idx] = HRM_TOKEN_MAP.TRAFFIC; break;
+                        case TILE_TYPES.ROAD_CLOSURE: inputSequence[idx] = HRM_TOKEN_MAP.ROAD_CLOSURE; break;
+                    }
+                }
+            }
+
+            // Encode depot
+            const depotIdx = scenario.depot.y * MAP_DIMENSIONS.width + scenario.depot.x;
+            inputSequence[depotIdx] = HRM_TOKEN_MAP.DEPOT;
+
+            // Encode stops
+            for (const stop of scenario.stops) {
+                const idx = stop.position.y * MAP_DIMENSIONS.width + stop.position.x;
+                inputSequence[idx] = stop.type === 'pickup' ? HRM_TOKEN_MAP.PICKUP : HRM_TOKEN_MAP.DELIVERY;
+            }
+
+            // Create output sequence
+            const outputSequence = new Array(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height).fill(HRM_TOKEN_MAP.PAD);
+            
+            // Encode solution paths if feasible
+            if (solution && solution.feasible) {
+                solution.vehicles.forEach((vehicleRoute, vehicleIdx) => {
+                    const routeToken = Math.min(HRM_TOKEN_MAP.ROUTE_V1 + vehicleIdx, HRM_TOKEN_MAP.ROUTE_V3);
+                    
+                    vehicleRoute.paths.forEach(path => {
+                        if (path && Array.isArray(path)) {
+                            path.forEach(pos => {
+                                if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+                                    const idx = pos.y * MAP_DIMENSIONS.width + pos.x;
+                                    if (idx >= 0 && idx < outputSequence.length) {
+                                        outputSequence[idx] = routeToken;
+                                    }
+                                }
+                            });
+                        }
+                    });
+                });
+            }
+
+            return { input: inputSequence, output: outputSequence };
+        }
+
+        // Drawing functions
+        function drawMap() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw base map
             for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
                 for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
                     let color;
-                    switch (dynamicGrid[y][x]) {
+                    switch (trafficGrid[y][x]) {
                         case TILE_TYPES.OBSTACLE: color = COLORS.OBSTACLE; break;
                         case TILE_TYPES.ROAD: color = COLORS.ROAD; break;
-                        case TILE_TYPES.SLOW_ROAD: color = COLORS.SLOW_ROAD; break;
-                        default: color = COLORS.OBSTACLE;
+                        case TILE_TYPES.TRAFFIC: color = COLORS.TRAFFIC; break;
+                        case TILE_TYPES.ROAD_CLOSURE: color = COLORS.ROAD_CLOSURE; break;
+                        default: color = COLORS.ROAD;
                     }
                     ctx.fillStyle = color;
                     ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
                 }
             }
-            
-            // Draw path if provided
-            if (path.length > 0) {
-                ctx.fillStyle = COLORS.PATH;
-                path.forEach(p => {
-                    ctx.fillRect(p.x * tileSize, p.y * tileSize, tileSize, tileSize);
-                });
-            }
 
-            // Draw start and end points
-            if (startPos) {
-                ctx.fillStyle = COLORS.START;
-                ctx.fillRect(startPos.x * tileSize, startPos.y * tileSize, tileSize, tileSize);
-            }
-            if (endPos) {
-                ctx.fillStyle = COLORS.END;
-                ctx.fillRect(endPos.x * tileSize, endPos.y * tileSize, tileSize, tileSize);
+            if (currentScenario) {
+                // Draw depot
+                ctx.fillStyle = COLORS.DEPOT;
+                ctx.fillRect(currentScenario.depot.x * tileSize, currentScenario.depot.y * tileSize, tileSize, tileSize);
+
+                // Draw stops
+                for (const stop of currentScenario.stops) {
+                    ctx.fillStyle = stop.type === 'pickup' ? COLORS.PICKUP : COLORS.DELIVERY;
+                    ctx.fillRect(stop.position.x * tileSize, stop.position.y * tileSize, tileSize, tileSize);
+                }
+
+                // Draw solution if available
+                if (currentSolution && currentSolution.feasible) {
+                    currentSolution.vehicles.forEach((vehicleRoute, idx) => {
+                        const colors = [COLORS.VEHICLE_1, COLORS.VEHICLE_2, COLORS.VEHICLE_3];
+                        ctx.fillStyle = colors[idx] || COLORS.ROUTE;
+                        
+                        vehicleRoute.paths.forEach(path => {
+                            path.forEach(pos => {
+                                ctx.fillRect(pos.x * tileSize, pos.y * tileSize, tileSize, tileSize);
+                            });
+                        });
+                    });
+                }
             }
         }
 
-        /**
-         * Animates the vehicle moving along the solved path.
-         */
-        function animateVehicle(dynamicGrid, path) {
-            if (path.length === 0) {
-                isAnimating = false;
-                statusEl.textContent = 'No route available! Try generating a new map.';
+        function updateScenarioInfo() {
+            if (!currentScenario) {
+                scenarioInfo.classList.add('hidden');
                 return;
             }
-            isAnimating = true;
-            let step = 0;
 
-            function animationLoop() {
-                if (step >= path.length) {
-                    isAnimating = false;
-                    const totalCost = calculatePathCost(path, dynamicGrid);
-                    statusEl.textContent = `🎯 Arrived! Route: ${path.length} steps, Cost: ${totalCost.toFixed(1)}`;
-                    return;
-                }
-                
-                drawMap(dynamicGrid, path.slice(0, step + 1));
-                
-                const currentPos = path[step];
-                ctx.fillStyle = COLORS.VEHICLE;
-                ctx.beginPath();
-                ctx.arc(
-                    currentPos.x * tileSize + tileSize / 2, 
-                    currentPos.y * tileSize + tileSize / 2, 
-                    tileSize / 2 * 0.8, 
-                    0, 2 * Math.PI
-                );
-                ctx.fill();
-
-                step++;
-                setTimeout(() => {
-                    if (isAnimating) {
-                        requestAnimationFrame(animationLoop);
-                    }
-                }, 100);
-            }
-            animationLoop();
-        }
-
-        // --- A* Pathfinding Implementation (unchanged - was already correct) ---
-        function solvePath(dynamicGrid, start, end) {
-            const openSet = [start];
-            const cameFrom = {};
-            const closedSet = new Set();
+            scenarioInfo.classList.remove('hidden');
             
-            const gScore = {};
-            const fScore = {};
-
-            const startKey = `${start.x},${start.y}`;
-            gScore[startKey] = 0;
-            fScore[startKey] = heuristic(start, end);
-
-            while (openSet.length > 0) {
-                let current = openSet[0];
-                let currentIndex = 0;
-                for (let i = 1; i < openSet.length; i++) {
-                    const currentF = fScore[`${openSet[i].x},${openSet[i].y}`] || Infinity;
-                    const bestF = fScore[`${current.x},${current.y}`] || Infinity;
-                    if (currentF < bestF) {
-                        current = openSet[i];
-                        currentIndex = i;
-                    }
-                }
-
-                if (current.x === end.x && current.y === end.y) {
-                    return reconstructPath(cameFrom, current);
-                }
-
-                openSet.splice(currentIndex, 1);
-                closedSet.add(`${current.x},${current.y}`);
-                
-                const neighbors = getNeighbors(current, dynamicGrid);
-                for (const neighbor of neighbors) {
-                    const neighborKey = `${neighbor.x},${neighbor.y}`;
-                    const currentKey = `${current.x},${current.y}`;
-                    
-                    if (closedSet.has(neighborKey)) continue;
-                    
-                    const cost = getCost(dynamicGrid[neighbor.y][neighbor.x]);
-                    const tentativeGScore = (gScore[currentKey] || 0) + cost;
-
-                    if (tentativeGScore < (gScore[neighborKey] || Infinity)) {
-                        cameFrom[neighborKey] = current;
-                        gScore[neighborKey] = tentativeGScore;
-                        fScore[neighborKey] = gScore[neighborKey] + heuristic(neighbor, end);
-                        
-                        if (!openSet.some(node => node.x === neighbor.x && node.y === neighbor.y)) {
-                            openSet.push(neighbor);
-                        }
-                    }
-                }
-            }
-            return [];
-        }
-        
-        function heuristic(a, b) {
-            return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-        }
-
-        function getNeighbors(node, dynamicGrid) {
-            const neighbors = [];
-            const dirs = [{x:0, y:1}, {x:0, y:-1}, {x:1, y:0}, {x:-1, y:0}];
-            for(const dir of dirs) {
-                const nextX = node.x + dir.x;
-                const nextY = node.y + dir.y;
-                if(nextX >= 0 && nextX < MAP_DIMENSIONS.width && nextY >= 0 && nextY < MAP_DIMENSIONS.height) {
-                    const tileType = dynamicGrid[nextY][nextX];
-                    
-                    if (tileType !== TILE_TYPES.OBSTACLE) {
-                        neighbors.push({x: nextX, y: nextY});
-                    }
-                }
-            }
-            return neighbors;
-        }
-
-        function getCost(tileType) {
-            switch(tileType) {
-                case TILE_TYPES.ROAD: return 1;
-                case TILE_TYPES.SLOW_ROAD: return 2;
-                default: return Infinity;
-            }
-        }
-
-        function reconstructPath(cameFrom, current) {
-            const totalPath = [current];
-            let currentKey = `${current.x},${current.y}`;
-            while (cameFrom[currentKey]) {
-                current = cameFrom[currentKey];
-                currentKey = `${current.x},${current.y}`;
-                totalPath.unshift(current);
-            }
-            return totalPath;
-        }
-
-        // --- 🚀 ULTRA-DIVERSE: Enhanced Dataset Generation ---
-        
-        function gridToHRMSequence(baseGrid, dynamicGrid, startPos, endPos, optimalPath) {
-            const pathSet = new Set(optimalPath.map(p => `${p.x},${p.y}`));
-            const sequence = new Array(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height);
+            const complexity = calculateComplexity(currentScenario);
+            const feasibilityCheck = checkConstraints(currentScenario);
             
-            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
-                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
-                    const idx = y * MAP_DIMENSIONS.width + x;
-                    const coord = `${x},${y}`;
-                    
-                    if (startPos && startPos.x === x && startPos.y === y) {
-                        sequence[idx] = HRM_TOKEN_MAP.START;
-                    } else if (endPos && endPos.x === x && endPos.y === y) {
-                        sequence[idx] = HRM_TOKEN_MAP.END;
-                    } else if (pathSet.has(coord)) {
-                        sequence[idx] = HRM_TOKEN_MAP.PATH;
-                    } else {
-                        switch (dynamicGrid[y][x]) {
-                            case TILE_TYPES.OBSTACLE: sequence[idx] = HRM_TOKEN_MAP.OBSTACLE; break;
-                            case TILE_TYPES.ROAD: sequence[idx] = HRM_TOKEN_MAP.ROAD; break;
-                            case TILE_TYPES.SLOW_ROAD: sequence[idx] = HRM_TOKEN_MAP.SLOW_ROAD; break;
-                            default: sequence[idx] = HRM_TOKEN_MAP.OBSTACLE;
-                        }
-                    }
+            scenarioDetails.innerHTML = `
+                <div>
+                    <h4 class="font-medium text-gray-700">Complexity Analysis</h4>
+                    <p>Possible stop orders: ${complexity.possible_orders.toLocaleString()}</p>
+                    <p>Vehicle assignments: ${complexity.vehicle_assignments}</p>
+                    <p>Constraint violations: ${feasibilityCheck.violations}</p>
+                </div>
+                <div>
+                    <h4 class="font-medium text-gray-700">Scenario Details</h4>
+                    <p>Vehicles: ${currentScenario.vehicles.length}</p>
+                    <p>Stops: ${currentScenario.stops.length}</p>
+                    <p>Precedence constraints: ${currentScenario.stops.filter(s => s.precedence).length}</p>
+                </div>
+            `;
+        }
+
+        function calculateComplexity(scenario) {
+            const numStops = scenario.stops.length;
+            const numVehicles = scenario.vehicles.length;
+            const numPairs = scenario.stops.filter(s => s.type === 'pickup').length;
+            
+            // Factorial for stop ordering (considering pairs)
+            let factorial = 1;
+            for (let i = 2; i <= numPairs; i++) {
+                factorial *= i;
+            }
+            
+            // Vehicle assignment complexity
+            let vehicleAssignments = 1;
+            for (const stop of scenario.stops) {
+                if (stop.type === 'pickup') {
+                    const compatibleVehicles = scenario.vehicles.filter(v => 
+                        stop.required_vehicles.includes(v.type)
+                    ).length;
+                    vehicleAssignments *= Math.max(1, compatibleVehicles);
                 }
             }
             
-            return sequence;
-        }
-
-        function pathToHRMSequence(baseGrid, path) {
-            const sequence = new Array(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height).fill(HRM_TOKEN_MAP.PAD);
-            
-            for (const pos of path) {
-                const idx = pos.y * MAP_DIMENSIONS.width + pos.x;
-                sequence[idx] = HRM_TOKEN_MAP.PATH;
-            }
-            
-            return sequence;
-        }
-
-        /**
-         * 🚀 ULTRA-FIX 7: Enhanced uniqueness checking with multiple factors
-         */
-        function isUniqueExample(inputSequence, pathLength, obstacleRatio, distance) {
-            // Check exact input uniqueness
-            const inputKey = inputSequence.join(',');
-            if (generatedExamples.has(inputKey)) {
-                return false;
-            }
-            
-            // 🚀 Enhanced uniqueness: check similarity in characteristics
-            const charHash = `${Math.floor(pathLength/3)}-${Math.floor(obstacleRatio*20)}-${Math.floor(distance/5)}`;
-            if (generatedHashes.has(charHash)) {
-                // Allow some similar characteristics but not too many
-                const count = (charHash.match(/,/g) || []).length;
-                if (count > 10) return false; // Max 10 examples with similar characteristics
-            } else {
-                generatedHashes.add(charHash);
-            }
-            
-            generatedExamples.add(inputKey);
-            return true;
-        }
-
-        /**
-         * 🚀 ULTRA-FIX 8: Enhanced example generation with path range 2-200
-         */
-        function generateHRMTrainingExample() {
-            for (let attempt = 0; attempt < 25; attempt++) { // More attempts for perfect examples
-                try {
-                    generateMap();
-                    const baseGrid = grid.map(row => [...row]);
-                    const dynamicGrid = addSlowRoads(baseGrid);
-                    
-                    const optimalPath = solvePath(dynamicGrid, startPos, endPos);
-                    
-                    if (optimalPath.length === 0) {
-                        continue;
-                    }
-                    
-                    // 🚀 ULTRA-FIX 9: EXPANDED PATH LENGTH RANGE (2-200)
-                    if (optimalPath.length < 2 || optimalPath.length > 200) {
-                        continue;
-                    }
-                    
-                    // Calculate characteristics for uniqueness
-                    const distance = Math.abs(startPos.x - endPos.x) + Math.abs(startPos.y - endPos.y);
-                    const obstacleCount = grid.flat().filter(cell => cell === TILE_TYPES.OBSTACLE).length;
-                    const obstacleRatio = obstacleCount / (MAP_DIMENSIONS.width * MAP_DIMENSIONS.height);
-                    
-                    const inputSequence = gridToHRMSequence(baseGrid, dynamicGrid, startPos, endPos, []);
-                    
-                    // 🚀 Enhanced uniqueness check
-                    if (!isUniqueExample(inputSequence, optimalPath.length, obstacleRatio, distance)) {
-                        continue;
-                    }
-                    
-                    const outputSequence = pathToHRMSequence(baseGrid, optimalPath);
-                    
-                    return {
-                        input: inputSequence,
-                        output: outputSequence,
-                        path_length: optimalPath.length,
-                        cost: calculatePathCost(optimalPath, dynamicGrid),
-                        distance: distance,
-                        obstacle_ratio: obstacleRatio,
-                        attempt: attempt + 1
-                    };
-                } catch (error) {
-                    console.warn(`Attempt ${attempt + 1} failed:`, error);
-                    continue;
-                }
-            }
-            
-            return null;
-        }
-
-        /**
-         * 🚀 OUTSTANDING: Collects perfect training data with ZERO edge bias
-         */
-        async function collectHRMTrainingData(targetCount = 1000) {
-            if (!progressText || !dataProgress) {
-                console.warn('Progress elements not found, proceeding without progress display');
-            }
-
-            isCollectingData = true;
-            
-            // Clear uniqueness trackers
-            generatedExamples.clear();
-            generatedHashes.clear();
-            
-            const hrmData = {
-                inputs: [],
-                labels: [],
-                puzzle_identifiers: [],
-                puzzle_indices: [0],
-                group_indices: [0]
+            return {
+                possible_orders: factorial,
+                vehicle_assignments: vehicleAssignments,
+                total_combinations: factorial * vehicleAssignments
             };
+        }
+
+        function checkConstraints(scenario) {
+            let violations = 0;
+            
+            // Check vehicle compatibility
+            for (const stop of scenario.stops) {
+                const compatibleVehicles = scenario.vehicles.filter(v => 
+                    stop.required_vehicles.includes(v.type)
+                );
+                if (compatibleVehicles.length === 0) violations++;
+            }
+            
+            return { violations };
+        }
+
+        // Data collection
+        async function collectTrainingData(targetCount = 1000) {
+            isCollectingData = true;
+            collectedData = [];
             
             collectDataBtn.disabled = true;
-            generateBtn.disabled = true;
-            if (dataProgress) dataProgress.classList.remove('hidden');
+            generateScenarioBtn.disabled = true;
+            dataProgress.classList.remove('hidden');
             
-            let exampleId = 0;
-            let puzzleId = 0;
+            let successCount = 0;
             let attempts = 0;
-            let totalAttempts = 0;
-            const maxTotalAttempts = targetCount * 15; // More attempts for perfect quality
+            const maxAttempts = targetCount * 5; // More attempts for success
             
-            console.log("🚀 Starting OUTSTANDING data generation with ZERO edge bias...");
+            console.log('Starting data collection...');
             
-            // Track diversity metrics
-            const diversityStats = {
-                distances: [],
-                obstacles: [],
-                pathLengths: [],
-                themes: new Set()
-            };
-            
-            while (hrmData.inputs.length < targetCount && totalAttempts < maxTotalAttempts) {
-                totalAttempts++;
+            while (successCount < targetCount && attempts < maxAttempts) {
+                attempts++;
                 
-                const example = generateHRMTrainingExample();
-                if (example) {
-                    hrmData.inputs.push(example.input);
-                    hrmData.labels.push(example.output);
-                    hrmData.puzzle_identifiers.push(0);
+                try {
+                    generateMap();
+                    const scenario = generateVRPScenario();
+                    const solution = solveVRP(scenario);
                     
-                    // Track diversity
-                    diversityStats.distances.push(example.distance);
-                    diversityStats.obstacles.push(example.obstacle_ratio);
-                    diversityStats.pathLengths.push(example.path_length);
-                    
-                    exampleId++;
-                    puzzleId++;
-                    hrmData.puzzle_indices.push(exampleId);
-                    hrmData.group_indices.push(puzzleId);
-                    
-                    // Log outstanding metrics every 100 examples
-                    if (hrmData.inputs.length % 100 === 0) {
-                        const distStd = calculateStd(diversityStats.distances);
-                        const obsStd = calculateStd(diversityStats.obstacles);
-                        const pathStd = calculateStd(diversityStats.pathLengths);
+                    if (solution.feasible && solution.vehicles.length > 0) {
+                        const hrmData = scenarioToHRM(scenario, solution);
+                        const complexity = calculateComplexity(scenario);
                         
-                        console.log(`✅ Generated ${hrmData.inputs.length} OUTSTANDING examples (ZERO edge bias)`);
-                        console.log(`📊 Distance std: ${distStd.toFixed(2)} (target: >10)`);
-                        console.log(`📊 Obstacle std: ${obsStd.toFixed(3)} (target: >0.08)`);
-                        console.log(`📊 Path length std: ${pathStd.toFixed(2)} (target: >15)`);
-                        console.log(`🎯 Success rate: ${(hrmData.inputs.length/totalAttempts*100).toFixed(1)}%`);
+                        collectedData.push({
+                            input: hrmData.input,
+                            output: hrmData.output,
+                            scenario_complexity: complexity,
+                            solution_cost: solution.total_cost,
+                            num_vehicles_used: solution.vehicles.length,
+                            total_stops: scenario.stops.length
+                        });
+                        successCount++;
+                        
+                        if (successCount % 50 === 0) {
+                            console.log(`Collected ${successCount} examples, attempt ${attempts}`);
+                        }
+                    } else {
+                        if (attempts % 100 === 0) {
+                            console.log(`Attempt ${attempts}: infeasible scenario`);
+                        }
+                    }
+                } catch (error) {
+                    if (attempts % 100 === 0) {
+                        console.warn(`Attempt ${attempts} failed:`, error.message);
                     }
                 }
                 
-                // Update progress every 25 total attempts
-                if (totalAttempts % 25 === 0) {
-                    if (progressText) progressText.textContent = `${hrmData.inputs.length}/${targetCount} (${totalAttempts} attempts, ZERO edge bias)`;
-                    statusEl.textContent = `Generating OUTSTANDING dataset: ${hrmData.inputs.length}/${targetCount} examples (ZERO edge bias)`;
-                    
+                if (attempts % 25 === 0) {
+                    progressText.textContent = `${successCount}/${targetCount} (${attempts} attempts)`;
+                    statusEl.textContent = `Generating training data: ${successCount}/${targetCount} examples (${(successCount/attempts*100).toFixed(1)}% success rate)`;
                     await new Promise(resolve => setTimeout(resolve, 1));
                 }
             }
             
             isCollectingData = false;
             collectDataBtn.disabled = false;
-            generateBtn.disabled = false;
-            if (downloadDataBtn) downloadDataBtn.disabled = false;
-            if (dataProgress) dataProgress.classList.add('hidden');
+            generateScenarioBtn.disabled = false;
             
-            // Final diversity report
-            const finalDistStd = calculateStd(diversityStats.distances);
-            const finalObsStd = calculateStd(diversityStats.obstacles);
-            const finalPathStd = calculateStd(diversityStats.pathLengths);
-            
-            console.log(`🎉 OUTSTANDING Data Generation Complete! (ZERO edge bias applied)`);
-            console.log(`📊 Final Quality Metrics:`);
-            console.log(`   - Generated: ${hrmData.inputs.length}/${targetCount} examples`);
-            console.log(`   - Distance std: ${finalDistStd.toFixed(2)} (target: >10, excellent: >12)`);
-            console.log(`   - Obstacle std: ${finalObsStd.toFixed(3)} (target: >0.08, excellent: >0.10)`);
-            console.log(`   - Path length std: ${finalPathStd.toFixed(2)} (target: >15, excellent: >20)`);
-            console.log(`   - Success rate: ${(hrmData.inputs.length/totalAttempts*100).toFixed(1)}%`);
-            console.log(`   - 🚀 CRITICAL: ZERO edge bias fix applied`);
-            
-            let qualityRating = "GOOD";
-            if (finalDistStd > 12 && finalObsStd > 0.10 && finalPathStd > 20) {
-                qualityRating = "OUTSTANDING";
-            } else if (finalDistStd > 10 && finalObsStd > 0.08 && finalPathStd > 15) {
-                qualityRating = "EXCELLENT";
-            }
-            
-            if (hrmData.inputs.length >= targetCount) {
-                statusEl.textContent = `✅ Generated ${hrmData.inputs.length} OUTSTANDING examples! Quality: ${qualityRating} (ZERO edge bias)`;
+            if (successCount > 0) {
+                downloadDataBtn.disabled = false;
+                dataProgress.classList.add('hidden');
+                
+                const successRate = (successCount / attempts * 100).toFixed(1);
+                statusEl.textContent = `Generated ${successCount}/${targetCount} training examples (${successRate}% success rate)`;
+                console.log(`Data collection complete: ${successCount} examples from ${attempts} attempts`);
             } else {
-                statusEl.textContent = `⚠️ Generated ${hrmData.inputs.length}/${targetCount} outstanding examples. Quality: ${qualityRating} (ZERO edge bias)`;
+                statusEl.textContent = 'Failed to generate any valid examples. Try reducing complexity.';
             }
-            
-            window.hrmTrainingData = hrmData;
         }
 
-        function calculateStd(arr) {
-            const mean = arr.reduce((sum, val) => sum + val, 0) / arr.length;
-            const variance = arr.reduce((sum, val) => sum + Math.pow(val - mean, 2), 0) / arr.length;
-            return Math.sqrt(variance);
-        }
-
-        /**
-         * Downloads outstanding HRM training data
-         */
-        function downloadHRMTrainingData() {
-            if (!window.hrmTrainingData || window.hrmTrainingData.inputs.length === 0) {
-                alert('No outstanding training data to download. Generate data first!');
+        function downloadTrainingData() {
+            if (collectedData.length === 0) {
+                alert('No training data available. Generate data first.');
                 return;
             }
             
-            const data = window.hrmTrainingData;
+            const inputs = collectedData.map(d => d.input);
+            const outputs = collectedData.map(d => d.output);
+            const puzzleIds = new Array(collectedData.length).fill(0); // All same puzzle type
+            
+            // Create puzzle indices (boundary markers)
+            const puzzleIndices = [];
+            for (let i = 0; i <= collectedData.length; i++) {
+                puzzleIndices.push(i);
+            }
+            
+            // Create group indices (each example is its own group)
+            const groupIndices = [...puzzleIndices];
             
             const metadata = {
+                task: "multi_vehicle_routing",
                 seq_len: MAP_DIMENSIONS.width * MAP_DIMENSIONS.height,
                 vocab_size: Object.keys(HRM_TOKEN_MAP).length,
-                pad_id: 0,
-                ignore_label_id: 0,
+                pad_id: HRM_TOKEN_MAP.PAD,
+                ignore_label_id: HRM_TOKEN_MAP.PAD,
                 blank_identifier_id: 0,
                 num_puzzle_identifiers: 1,
-                total_groups: data.group_indices.length - 1,
+                total_groups: collectedData.length,
                 mean_puzzle_examples: 1.0,
                 sets: ["all"],
-                task: "outstanding_pathfinding_zero_edge_bias",
                 map_dimensions: MAP_DIMENSIONS,
                 token_mapping: HRM_TOKEN_MAP,
-                outstanding_features: {
-                    obstacle_density_range: "8-52% (uniform)",
-                    slow_road_ratio_range: "5-45% (uniform)", 
-                    position_distribution: "TRUE UNIFORM (ZERO edge bias - CRITICAL FIX)",
-                    map_themes: "6 different generation strategies",
-                    path_length_range: "2-200 steps",
-                    uniqueness_checking: "multi-factor enhanced",
-                    expected_severity_score: "0-2/50 (OUTSTANDING)",
-                    critical_fix: "Removed distance targeting that caused edge bias"
+                complexity_stats: {
+                    avg_possible_orders: collectedData.reduce((sum, d) => sum + d.scenario_complexity.possible_orders, 0) / collectedData.length,
+                    avg_cost: collectedData.reduce((sum, d) => sum + d.solution_cost, 0) / collectedData.length,
+                    avg_vehicles_used: collectedData.reduce((sum, d) => sum + d.num_vehicles_used, 0) / collectedData.length
                 }
             };
             
             const files = {
-                'pathfinding_1000ex_train_all__inputs.json': JSON.stringify(data.inputs),
-                'pathfinding_1000ex_train_all__labels.json': JSON.stringify(data.labels),
-                'pathfinding_1000ex_train_all__puzzle_identifiers.json': JSON.stringify(data.puzzle_identifiers),
-                'pathfinding_1000ex_train_all__puzzle_indices.json': JSON.stringify(data.puzzle_indices),
-                'pathfinding_1000ex_train_all__group_indices.json': JSON.stringify(data.group_indices),
-                'pathfinding_1000ex_train_dataset.json': JSON.stringify(metadata),
-                'identifiers.json': JSON.stringify(["<blank>"])
+                'vrp_logistics_1000ex_train_all__inputs.json': JSON.stringify(inputs),
+                'vrp_logistics_1000ex_train_all__labels.json': JSON.stringify(outputs),
+                'vrp_logistics_1000ex_train_all__puzzle_identifiers.json': JSON.stringify(puzzleIds),
+                'vrp_logistics_1000ex_train_all__puzzle_indices.json': JSON.stringify(puzzleIndices),
+                'vrp_logistics_1000ex_train_all__group_indices.json': JSON.stringify(groupIndices),
+                'vrp_logistics_1000ex_train_dataset.json': JSON.stringify(metadata),
+                'vrp_logistics_1000ex_identifiers.json': JSON.stringify(["<blank>"])
             };
             
             for (const [filename, content] of Object.entries(files)) {
@@ -979,89 +812,85 @@
                 URL.revokeObjectURL(url);
             }
             
-            console.log(`📦 Downloaded ${Object.keys(files).length} files for OUTSTANDING HRM training dataset with ${data.inputs.length} examples (ZERO edge bias)`);
-            alert(`Downloaded ${Object.keys(files).length} OUTSTANDING HRM dataset files!\n\n🚀 CRITICAL FIX APPLIED:\n❌ REMOVED: Distance targeting (caused edge bias)\n✅ FIXED: True uniform position selection\n✅ RESULT: ZERO edge bias expected\n✅ TARGET: Severity score 0-2/50 (OUTSTANDING)\n\nNext: Convert & train for OUTSTANDING results!`);
+            console.log('Downloaded files:', Object.keys(files));
+            statusEl.textContent = `Downloaded ${Object.keys(files).length} HRM-compatible files with ${collectedData.length} examples`;
         }
 
-        // --- Event Handlers & Initialization ---
-        function handleGenerate() {
-            if (isAnimating) {
-                cancelAnimationFrame(animationFrameId);
-                isAnimating = false;
+        // Event handlers
+        function generateScenario() {
+            try {
+                generateMap();
+                currentScenario = generateVRPScenario();
+                currentSolution = null;
+                updateScenarioInfo();
+                drawMap();
+                
+                console.log('Generated scenario:', {
+                    depot: currentScenario.depot,
+                    vehicles: currentScenario.vehicles.length,
+                    stops: currentScenario.stops.length,
+                    stop_types: currentScenario.stops.map(s => s.type)
+                });
+                
+                statusEl.textContent = 'New VRP scenario generated. Click "Find Optimal Solution" to solve.';
+            } catch (error) {
+                console.error('Error generating scenario:', error);
+                statusEl.textContent = `Error generating scenario: ${error.message}`;
+            }
+        }
+
+        function solveCurrentScenario() {
+            if (!currentScenario) {
+                statusEl.textContent = 'Generate a scenario first.';
+                return;
             }
             
-            statusEl.textContent = 'Generating OUTSTANDING pathfinding challenge (ZERO edge bias)...';
-            generateBtn.disabled = true;
-
+            statusEl.textContent = 'Solving VRP scenario...';
             setTimeout(() => {
                 try {
-                    generateMap();
-                    const dynamicGrid = addSlowRoads(grid);
-
-                    const path = solvePath(dynamicGrid, startPos, endPos);
+                    currentSolution = solveVRP(currentScenario);
+                    drawMap();
                     
-                    if (path.length > 0) {
-                        const totalCost = calculatePathCost(path, dynamicGrid);
-                        const distance = Math.abs(startPos.x - endPos.x) + Math.abs(startPos.y - endPos.y);
-                        statusEl.textContent = `🚀 OUTSTANDING Path found! Length: ${path.length}, Distance: ${distance}, Cost: ${totalCost.toFixed(1)} (ZERO edge bias)`;
-                        animateVehicle(dynamicGrid, path);
+                    console.log('Solution result:', {
+                        feasible: currentSolution.feasible,
+                        vehicles_used: currentSolution.vehicles.length,
+                        total_cost: currentSolution.total_cost
+                    });
+                    
+                    if (currentSolution.feasible) {
+                        statusEl.textContent = `Solution found! Cost: ${currentSolution.total_cost.toFixed(1)}, Vehicles: ${currentSolution.vehicles.length}`;
                     } else {
-                        drawMap(dynamicGrid);
-                        statusEl.textContent = 'No path available! Try generating again.';
+                        statusEl.textContent = 'No feasible solution found for this scenario.';
                     }
                 } catch (error) {
-                    console.error('Error generating path:', error);
-                    statusEl.textContent = 'Error calculating path. Please try again.';
+                    console.error('Solver error:', error);
+                    statusEl.textContent = `Solver error: ${error.message}`;
                 }
-                generateBtn.disabled = false;
-            }, 50);
-        }
-
-        function calculatePathCost(path, dynamicGrid) {
-            let totalCost = 0;
-            for (let pos of path) {
-                totalCost += getCost(dynamicGrid[pos.y][pos.x]);
-            }
-            return totalCost;
+            }, 100);
         }
 
         function resizeCanvas() {
             const container = canvas.parentElement;
-            const containerSize = Math.min(container.clientWidth, container.clientHeight, 800);
-            
-            canvas.width = containerSize;
-            canvas.height = containerSize;
-            tileSize = containerSize / MAP_DIMENSIONS.width;
-            
-            if (grid.length > 0 && !isAnimating) {
-                const dynamicGrid = addSlowRoads(grid);
-                drawMap(dynamicGrid);
-            }
+            const size = Math.min(container.clientWidth, 800);
+            canvas.width = size;
+            canvas.height = size;
+            tileSize = size / MAP_DIMENSIONS.width;
+            if (currentScenario) drawMap();
         }
 
+        // Initialize
         function init() {
-            try {
-                resizeCanvas();
-                
-                window.addEventListener('resize', resizeCanvas);
-                generateBtn.addEventListener('click', handleGenerate);
-                
-                if (collectDataBtn) collectDataBtn.addEventListener('click', () => collectHRMTrainingData(1000));
-                if (downloadDataBtn) downloadDataBtn.addEventListener('click', downloadHRMTrainingData);
-                
-                statusEl.textContent = '🚀 OUTSTANDING Generator Ready! ZERO edge bias fix applied - Perfect dataset quality!';
-                
-            } catch (error) {
-                console.error('Initialization error:', error);
-                statusEl.textContent = 'Error initializing generator. Please refresh.';
-            }
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            generateScenarioBtn.addEventListener('click', generateScenario);
+            solveBtn.addEventListener('click', solveCurrentScenario);
+            collectDataBtn.addEventListener('click', () => collectTrainingData(1000));
+            downloadDataBtn.addEventListener('click', downloadTrainingData);
+            
+            statusEl.textContent = 'Ready. Click "Generate Scenario" to create a multi-vehicle routing problem.';
         }
 
-        if (document.readyState === 'loading') {
-            document.addEventListener('DOMContentLoaded', init);
-        } else {
-            init();
-        }
+        document.addEventListener('DOMContentLoaded', init);
     </script>
 </body>
 </html>
