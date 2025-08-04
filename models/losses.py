@@ -37,6 +37,47 @@ def softmax_cross_entropy(logits, labels, ignore_index: int = -100):
     return F.cross_entropy(logits.to(torch.float32).view(-1, logits.shape[-1]), labels.to(torch.long).view(-1), ignore_index=ignore_index, reduction="none").view(labels.shape)
 
 
+def focal_loss(logits, labels, alpha=0.25, gamma=2.0, ignore_index=-100):
+    """Focal loss for class imbalance - focuses on hard examples"""
+    # Fix tensor contiguity and dtype issues
+    logits_flat = logits.reshape(-1, logits.size(-1))
+    labels_flat = labels.reshape(-1).long()  # Ensure labels are torch.long
+    
+    ce_loss = F.cross_entropy(logits_flat, labels_flat, ignore_index=ignore_index, reduction='none')
+    ce_loss = ce_loss.reshape(labels.shape)
+    
+    # Calculate p_t (probability of true class) - handle ignore_index properly
+    log_p = F.log_softmax(logits, dim=-1)
+    
+    # Create valid mask and clamp labels for gathering
+    valid_mask = (labels != ignore_index)
+    labels_clamped = torch.where(valid_mask, labels, 0).long()  # Replace ignore_index with 0 for gathering
+    
+    p_t = torch.exp(torch.gather(log_p, -1, labels_clamped.unsqueeze(-1)).squeeze(-1))
+    
+    # Apply focal loss modulation only to valid positions
+    focal_weight = alpha * (1 - p_t) ** gamma
+    
+    # Mask invalid positions  
+    focal_loss_result = torch.where(valid_mask, focal_weight * ce_loss, torch.zeros_like(ce_loss))
+    
+    return focal_loss_result
+
+
+def dice_loss(logits, labels, path_token_id=6, smooth=1e-7):
+    """Dice loss for path overlap - perfect for sparse pathfinding"""
+    # Get path probabilities
+    path_probs = F.softmax(logits, dim=-1)[..., path_token_id]
+    path_targets = (labels == path_token_id).float()
+    
+    # Calculate Dice coefficient
+    intersection = (path_probs * path_targets).sum()
+    union = path_probs.sum() + path_targets.sum()
+    
+    dice_coeff = (2 * intersection + smooth) / (union + smooth)
+    return 1 - dice_coeff
+
+
 def spatial_connectivity_loss(logits, labels, grid_width=40, path_token_id=6, spatial_penalty_weight=10.0):
     """
     FUNDAMENTAL FIX: Penalize spatially impossible path transitions
@@ -170,7 +211,13 @@ class ACTLossHead(nn.Module):
                  enable_connectivity_loss: bool = False,  
                  connectivity_weight: float = 5.0,
                  grid_width: int = 40,
-                 path_token_id: int = 6):
+                 path_token_id: int = 6,
+                 # NEW: Hybrid loss parameters
+                 enable_focal_loss: bool = False,
+                 focal_alpha: float = 0.25,
+                 focal_gamma: float = 2.0,
+                 enable_dice_loss: bool = False,
+                 dice_weight: float = 1.0):
         super().__init__()
         self.model = model
         self.loss_fn = globals()[loss_type]
@@ -182,6 +229,13 @@ class ACTLossHead(nn.Module):
         self.connectivity_weight = connectivity_weight
         self.grid_width = grid_width
         self.path_token_id = path_token_id
+        
+        # NEW: Hybrid loss configuration
+        self.enable_focal_loss = enable_focal_loss
+        self.focal_alpha = focal_alpha
+        self.focal_gamma = focal_gamma
+        self.enable_dice_loss = enable_dice_loss
+        self.dice_weight = dice_weight
         
     def initial_carry(self, *args, **kwargs):
         return self.model.initial_carry(*args, **kwargs)  # type: ignore
@@ -218,8 +272,19 @@ class ACTLossHead(nn.Module):
                 "steps":          torch.where(valid_metrics, new_carry.steps, 0).sum(),
             }
 
-        # Standard losses
-        lm_loss = (self.loss_fn(outputs["logits"], labels, ignore_index=IGNORE_LABEL_ID) / loss_divisor).sum()
+        # Main loss computation - HYBRID APPROACH
+        if self.enable_focal_loss:
+            # Use focal loss instead of standard cross-entropy
+            focal_losses = focal_loss(outputs["logits"], labels, 
+                                     alpha=self.focal_alpha, gamma=self.focal_gamma,
+                                     ignore_index=IGNORE_LABEL_ID)
+            lm_loss = (focal_losses / loss_divisor).sum()
+            metrics["focal_loss"] = lm_loss.detach()
+        else:
+            # Standard loss
+            lm_loss = (self.loss_fn(outputs["logits"], labels, ignore_index=IGNORE_LABEL_ID) / loss_divisor).sum()
+        
+        # Q-head losses
         q_halt_loss = F.binary_cross_entropy_with_logits(outputs["q_halt_logits"], seq_is_correct.to(outputs["q_halt_logits"].dtype), reduction="sum")
 
         metrics.update({
@@ -227,7 +292,13 @@ class ACTLossHead(nn.Module):
             "q_halt_loss": q_halt_loss.detach(),
         })
 
-        # FUNDAMENTAL SPATIAL FIX: Add spatial connectivity penalty
+        # Add dice loss component
+        dice_loss_value = torch.tensor(0.0, device=outputs["logits"].device, dtype=outputs["logits"].dtype)
+        if self.enable_dice_loss:
+            dice_loss_value = dice_loss(outputs["logits"], labels, path_token_id=self.path_token_id)
+            metrics["dice_loss"] = dice_loss_value.detach()
+
+        # SPATIAL FIXES: Add spatial connectivity penalty
         spatial_loss = torch.tensor(0.0, device=outputs["logits"].device, dtype=outputs["logits"].dtype)
         connectivity_loss = torch.tensor(0.0, device=outputs["logits"].device, dtype=outputs["logits"].dtype)
         
@@ -258,7 +329,7 @@ class ACTLossHead(nn.Module):
         # Filter outputs for return
         detached_outputs = {k: outputs[k].detach() for k in return_keys if k in outputs}
 
-        # TOTAL LOSS: Standard ACT loss + spatial fixes
-        total_loss = lm_loss + 0.5 * (q_halt_loss + q_continue_loss) + spatial_loss + connectivity_loss
+        # TOTAL LOSS: Standard ACT loss + spatial fixes + hybrid components
+        total_loss = lm_loss + 0.5 * (q_halt_loss + q_continue_loss) + spatial_loss + connectivity_loss + (self.dice_weight * dice_loss_value)
 
         return new_carry, total_loss, metrics, detached_outputs, new_carry.halted.all()
