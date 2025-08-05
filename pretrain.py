@@ -133,28 +133,85 @@ def create_model(config: PretrainConfig, train_metadata: PuzzleDatasetMetadata, 
                 for param in list(model.parameters()) + list(model.buffers()):
                     dist.broadcast(param, src=0)
 
-    # Optimizers and lr
+    # --- IMPROVED PARAMETER SEPARATION WITH VERIFICATION ---
+    
+    # First, let's see what parameters we actually have
+    print("\n>>> Model Parameter Structure:")
+    param_names = {}
+    for name, param in model.named_parameters():
+        category = "other"
+        if 'puzzle_emb' in name:
+            category = "puzzle_emb"
+        elif 'q_head' in name.lower():  # Case-insensitive search
+            category = "q_head"
+        
+        if category not in param_names:
+            param_names[category] = []
+        param_names[category].append(name)
+    
+    # Print parameter groupings for verification
+    for category, names in param_names.items():
+        print(f"\n{category} parameters ({len(names)}):")
+        for name in names[:3]:  # Show first 3
+            print(f"  - {name}")
+        if len(names) > 3:
+            print(f"  ... and {len(names) - 3} more")
+    
+    # Separate parameters into groups
+    puzzle_emb_params = []
+    q_head_params = []
+    main_params = []
+    
+    for name, param in model.named_parameters():
+        if 'puzzle_emb' in name:
+            puzzle_emb_params.append(param)
+        elif 'q_head' in name.lower():  # More robust matching
+            q_head_params.append(param)
+        else:
+            main_params.append(param)
+    
+    print(f"\n>>> Final Parameter Grouping:")
+    print(f"  Puzzle Embedding Params: {len(puzzle_emb_params)}")
+    print(f"  Q-Head Params: {len(q_head_params)}")
+    print(f"  Main Model Params: {len(main_params)}")
+    
+    # Verify Q-head params were found
+    if len(q_head_params) == 0:
+        print("WARNING: No Q-head parameters found! Check model structure.")
+        # Fall back to including them in main params
+        main_params = [p for n, p in model.named_parameters() if 'puzzle_emb' not in n]
+
+    # Create optimizers
     optimizers = [
         CastedSparseEmbeddingSignSGD_Distributed(
             model.model.puzzle_emb.buffers(),  # type: ignore
-            
-            lr=0,  # Needs to be set by scheduler
+            lr=0,  # Set by scheduler
             weight_decay=config.puzzle_emb_weight_decay,
-
             world_size=world_size
         ),
         AdamATan2(
-            model.parameters(),
-
-            lr=0,  # Needs to be set by scheduler
+            main_params,
+            lr=0,  # Set by scheduler
             weight_decay=config.weight_decay,
             betas=(config.beta1, config.beta2)
         )
     ]
-    optimizer_lrs = [
-        config.puzzle_emb_lr,
-        config.lr
-    ]
+    
+    optimizer_lrs = [config.puzzle_emb_lr, config.lr]
+    
+    # Only add Q-head optimizer if we found Q-head params
+    if len(q_head_params) > 0:
+        q_head_lr_ratio = getattr(config, 'q_head_lr_ratio', 0.1)  # Default to 10x lower
+        optimizers.append(
+            AdamATan2(
+                q_head_params,
+                lr=0,  # Set by scheduler
+                weight_decay=config.weight_decay,
+                betas=(config.beta1, config.beta2)
+            )
+        )
+        optimizer_lrs.append(config.lr * q_head_lr_ratio)
+        print(f"  Q-Head LR will be: {config.lr * q_head_lr_ratio} (main LR * {q_head_lr_ratio})")
 
     return model, optimizers, optimizer_lrs
 
@@ -162,23 +219,43 @@ def create_model(config: PretrainConfig, train_metadata: PuzzleDatasetMetadata, 
 def cosine_schedule_with_warmup_lr_lambda(
     current_step: int, *, base_lr: float, num_warmup_steps: int, num_training_steps: int, min_ratio: float = 0.0, num_cycles: float = 0.5
 ):
+    # SAFETY CHECK: Ensure we never return 0 unless min_ratio is 0
+    if base_lr == 0:
+        return 0
+        
     if current_step < num_warmup_steps:
         return base_lr * float(current_step) / float(max(1, num_warmup_steps))
 
+    # SAFETY CHECK: Ensure current_step doesn't exceed total steps
+    if current_step >= num_training_steps:
+        print(f"WARNING: current_step ({current_step}) >= num_training_steps ({num_training_steps})")
+        return base_lr * min_ratio  # Return minimum instead of 0
+    
     progress = float(current_step - num_warmup_steps) / float(max(1, num_training_steps - num_warmup_steps))
-    return base_lr * (min_ratio + max(0.0, (1 - min_ratio) * 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress))))
+    lr = base_lr * (min_ratio + max(0.0, (1 - min_ratio) * 0.5 * (1.0 + math.cos(math.pi * float(num_cycles) * 2.0 * progress))))
+    
+    # SAFETY CHECK: Never return exactly 0 unless min_ratio is 0
+    if lr == 0 and min_ratio > 0:
+        print(f"WARNING: LR calculated as 0 despite min_ratio={min_ratio}")
+        lr = base_lr * min_ratio
+        
+    return lr
 
 
 def init_train_state(config: PretrainConfig, train_metadata: PuzzleDatasetMetadata, world_size: int):
-    # Estimated total training steps
-    total_steps = int(config.epochs * train_metadata.total_groups * train_metadata.mean_puzzle_examples / config.global_batch_size)
+    # --- START CRITICAL FIX ---
+    # The scheduler's warmup is in units of SAMPLES, so total_steps must also be in SAMPLES.
+    # We calculate the total number of samples the model will see over all epochs.
+    total_samples = int(config.epochs * train_metadata.total_groups * train_metadata.mean_puzzle_examples)
+    total_steps = total_samples
+    # --- END CRITICAL FIX ---
 
     # Model
     model, optimizers, optimizer_lrs = create_model(config, train_metadata, world_size=world_size)
 
     return TrainState(
         step=0,
-        total_steps=total_steps,
+        total_steps=total_steps, # This is now in units of samples
 
         model=model,
         optimizers=optimizers,
@@ -197,18 +274,41 @@ def save_train_state(config: PretrainConfig, train_state: TrainState):
 
 
 def compute_lr(base_lr: float, config: PretrainConfig, train_state: TrainState):
-    return cosine_schedule_with_warmup_lr_lambda(
+    lr = cosine_schedule_with_warmup_lr_lambda(
         current_step=train_state.step,
         base_lr=base_lr,
         num_warmup_steps=round(config.lr_warmup_steps),
         num_training_steps=train_state.total_steps,
         min_ratio=config.lr_min_ratio
     )
-
+    
+    # --- START CORRECTED DEBUG SECTION ---
+    # The 'train_state.step' variable already tracks the batch number.
+    # We use it directly and reference the 'config' object that is passed
+    # into this function, which fixes the AttributeError.
+    batch_num = train_state.step
+    if 65 <= batch_num <= 75:
+        print(f"\nDEBUG LR Calculation at batch {batch_num:.0f}:")
+        print(f"  current_step: {train_state.step}")
+        print(f"  base_lr: {base_lr}")
+        print(f"  warmup_steps: {config.lr_warmup_steps}")
+        print(f"  total_steps: {train_state.total_steps}")
+        print(f"  min_ratio: {config.lr_min_ratio}")
+        print(f"  computed_lr: {lr}")
+        
+        # Check if we're past total steps
+        if train_state.step >= train_state.total_steps:
+            print(f"  WARNING: current_step >= total_steps!")
+    # --- END CORRECTED DEBUG SECTION ---
+    
+    return lr
 
 def train_batch(config: PretrainConfig, train_state: TrainState, batch: Any, global_batch_size: int, rank: int, world_size: int):
-    train_state.step += 1
-    if train_state.step > train_state.total_steps:  # At most train_total_steps
+    # This correctly increments the step counter by SAMPLES, not batches
+    num_samples_in_batch = batch['inputs'].shape[0] * world_size
+    train_state.step += num_samples_in_batch
+
+    if train_state.step > train_state.total_steps:
         return
 
     # To device
@@ -219,10 +319,38 @@ def train_batch(config: PretrainConfig, train_state: TrainState, batch: Any, glo
         with torch.device("cuda"):
             train_state.carry = train_state.model.initial_carry(batch)  # type: ignore
 
+    # --- START CRITICAL FIX ---
+    # Detach each tensor within the carry state individually.
+    # The 'carry' object is a container, not a single tensor. This fixes the AttributeError.
+    if train_state.carry is not None:
+        carry = train_state.carry
+        # Detach the main High-Level and Low-Level state tensors
+        if hasattr(carry, 'inner_carry') and hasattr(carry.inner_carry, 'z_H'):
+             carry.inner_carry.z_H = carry.inner_carry.z_H.detach()
+        if hasattr(carry, 'inner_carry') and hasattr(carry.inner_carry, 'z_L'):
+             carry.inner_carry.z_L = carry.inner_carry.z_L.detach()
+        
+        # Detach the ACT (Adaptive Computation Time) state tensors
+        if hasattr(carry, 'steps'):
+            carry.steps = carry.steps.detach()
+        if hasattr(carry, 'halted'):
+            carry.halted = carry.halted.detach()
+        
+        # Detach other potential tensors inside the carry object
+        if hasattr(carry, 'current_data') and isinstance(carry.current_data, dict):
+             carry.current_data = {k: v.detach() for k, v in carry.current_data.items()}
+             
+        train_state.carry = carry
+    # --- END CRITICAL FIX ---
+
     # Forward
     train_state.carry, loss, metrics, _, _ = train_state.model(carry=train_state.carry, batch=batch, return_keys=[])
 
+    # Backward
     ((1 / global_batch_size) * loss).backward()
+
+    # Gradient Clipping
+    torch.nn.utils.clip_grad_norm_(train_state.model.parameters(), max_norm=1.0)
 
     # Allreduce
     if world_size > 1:
@@ -245,8 +373,7 @@ def train_batch(config: PretrainConfig, train_state: TrainState, batch: Any, glo
     if len(metrics):
         assert not any(v.requires_grad for v in metrics.values())
 
-        metric_keys = list(sorted(metrics.keys()))  # Sort keys to guarantee all processes use the same order.
-        # Reduce and reconstruct
+        metric_keys = list(sorted(metrics.keys()))
         metric_values = torch.stack([metrics[k] for k in metric_keys])
         if world_size > 1:
             dist.reduce(metric_values, dst=0)
@@ -255,13 +382,42 @@ def train_batch(config: PretrainConfig, train_state: TrainState, batch: Any, glo
             metric_values = metric_values.cpu().numpy()
             reduced_metrics = {k: metric_values[i] for i, k in enumerate(metric_keys)}
             
-            # Postprocess
-            count = max(reduced_metrics["count"], 1)  # Avoid NaNs
+            count = max(reduced_metrics["count"], 1)
             reduced_metrics = {f"train/{k}": v / (global_batch_size if k.endswith("loss") else count) for k, v in reduced_metrics.items()}
 
             reduced_metrics["train/lr"] = lr_this_step
             return reduced_metrics
 
+def validate_training_config(config: PretrainConfig):
+    """Validate configuration to catch common issues before training."""
+    issues = []
+    
+    # Check warmup steps
+    if hasattr(config, 'lr_warmup_steps'):
+        warmup_batches = config.lr_warmup_steps / config.global_batch_size
+        print(f"\n>>> Warmup will last {warmup_batches:.1f} batches")
+        if warmup_batches > 100:
+            issues.append(f"Very long warmup: {warmup_batches:.1f} batches")
+    
+    # Check learning rates
+    if hasattr(config, 'puzzle_emb_lr') and hasattr(config, 'lr'):
+        ratio = config.puzzle_emb_lr / config.lr
+        if ratio > 1000:
+            issues.append(f"Puzzle embedding LR is {ratio:.0f}x higher than main LR - might be unstable")
+    
+    # Check batch size vs model size
+    if hasattr(config.arch, 'hidden_size'):
+        if config.arch.hidden_size < 512 and config.global_batch_size > 64:
+            issues.append("Small model with large batch size - might be unstable")
+    
+    if issues:
+        print("\n⚠️  Configuration warnings:")
+        for issue in issues:
+            print(f"  - {issue}")
+    else:
+        print("\n✅ Configuration looks good!")
+    
+    return len(issues) == 0
 
 def evaluate(config: PretrainConfig, train_state: TrainState, eval_loader: torch.utils.data.DataLoader, eval_metadata: PuzzleDatasetMetadata, rank: int, world_size: int):
     with torch.inference_mode():
