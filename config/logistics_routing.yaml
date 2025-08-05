@@ -13,12 +13,12 @@ data_path: data/city-logistics-1k
 # Hyperparams - Training
 global_batch_size: 32  # Fixed for RTX 3070 Ti memory
 
-epochs: 10
+epochs: 100
 eval_interval: 1
 checkpoint_every_eval: True
 
-lr: 1e-5
-lr_min_ratio: 0.1       # CRITICAL FOR STABILITY: Adhering to the paper's "constant LR" method.
+lr: 1e-4
+lr_min_ratio: 1.0       # CRITICAL FOR STABILITY: Adhering to the paper's "constant LR" method.
 lr_warmup_steps: 1920   # CRITICAL FOR STABILITY: Providing a much longer warmup period (2 full data passes)
                         # CORRECTED: Warmup over the first 2 full passes of the data.                        
                         # This is the most critical change for stability.
@@ -33,7 +33,7 @@ weight_decay: 0.1
 puzzle_emb_weight_decay: 0.1
 
 # Hyperparams - Puzzle embeddings training
-puzzle_emb_lr: 1e-3
+puzzle_emb_lr: 1e-2
 
 # Debugging
 seed: 42

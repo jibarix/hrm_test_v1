@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HRM City Logistics Evaluation - Dataset Compatible</title>
+    <title>HRM City Logistics Evaluation - With Reasoning Logs</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -35,14 +35,25 @@
             margin: 0 auto;
             position: relative;
         }
+        .reasoning-step {
+            border-left: 3px solid #3b82f6;
+            padding-left: 12px;
+            margin-bottom: 8px;
+        }
+        .reasoning-step.final {
+            border-left-color: #10b981;
+            background-color: #f0fdf4;
+            padding: 8px 12px;
+            border-radius: 6px;
+        }
     </style>
 </head>
 <body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
 
-    <div class="w-full max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-4 sm:p-6">
+    <div class="w-full max-w-6xl mx-auto bg-white rounded-xl shadow-lg p-4 sm:p-6">
         <div class="text-center mb-4">
             <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">HRM City Logistics Evaluation</h1>
-            <p class="text-gray-500 mt-1">Testing trained HRM on paper-compatible city routing scenarios</p>
+            <p class="text-gray-500 mt-1">🧠 Testing trained HRM with step-by-step reasoning visualization</p>
         </div>
 
         <!-- Model Status -->
@@ -83,6 +94,10 @@
                         <option value="23">11:00 PM - Late Night</option>
                     </select>
                 </div>
+                <div class="flex items-center gap-2">
+                    <input type="checkbox" id="log-reasoning" checked class="rounded">
+                    <label for="log-reasoning" class="text-sm font-medium text-gray-700">🧠 Log Reasoning Steps</label>
+                </div>
             </div>
             <div class="text-center">
                 <button id="generate-map-btn" class="btn bg-blue-500 text-white font-bold px-6 py-2 rounded-lg shadow-lg">
@@ -94,10 +109,32 @@
                 <button id="compare-oracle-btn" class="btn bg-purple-500 text-white font-bold px-4 py-2 rounded-lg shadow-lg ml-2">
                     ⚖️ Compare vs A* Oracle
                 </button>
+                <button id="animate-reasoning-btn" class="btn bg-orange-500 text-white font-bold px-4 py-2 rounded-lg shadow-lg ml-2" disabled>
+                    🎬 Animate Reasoning
+                </button>
             </div>
         </div>
         
         <p id="status" class="text-center text-gray-600 h-6 mb-4"></p>
+
+        <!-- Reasoning Steps Panel -->
+        <div id="reasoning-panel" class="bg-gray-50 rounded-lg p-4 mb-4 hidden">
+            <h3 class="text-lg font-semibold text-gray-800 mb-3">🧠 HRM Reasoning Process</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <h4 class="font-medium text-gray-700 mb-2">Step-by-Step Analysis</h4>
+                    <div id="reasoning-steps" class="max-h-64 overflow-y-auto space-y-2 text-sm">
+                        <!-- Reasoning steps will be populated here -->
+                    </div>
+                </div>
+                <div>
+                    <h4 class="font-medium text-gray-700 mb-2">Reasoning Summary</h4>
+                    <div id="reasoning-summary" class="text-sm space-y-1">
+                        <!-- Summary will be populated here -->
+                    </div>
+                </div>
+            </div>
+        </div>
 
         <!-- Results Display -->
         <div id="results-panel" class="bg-gray-50 rounded-lg p-4 mb-4 hidden">
@@ -165,9 +202,9 @@
             </div>
             <div class="mt-3 pt-3 border-t border-gray-200">
                 <div class="text-xs text-gray-600 space-y-1">
-                    <div><span class="font-medium text-blue-600">🧠 HRM Evaluation:</span> Testing trained model on scenarios matching paper-compatible dataset</div>
-                    <div><span class="font-medium text-purple-600">⚖️ A* Oracle:</span> Optimal pathfinding comparison for validation</div>
-                    <div><span class="font-medium text-green-600">📊 Dataset Compatible:</span> Exact same map generation and tokenization as training data</div>
+                    <div><span class="font-medium text-blue-600">🧠 HRM Reasoning:</span> Watch step-by-step path planning and refinement</div>
+                    <div><span class="font-medium text-orange-600">🎬 Animation:</span> Visualize how HRM evolves its solution over time</div>
+                    <div><span class="font-medium text-green-600">📊 Analysis:</span> Compare intermediate vs final paths</div>
                 </div>
             </div>
         </div>
@@ -179,35 +216,33 @@
     </div>
 
     <script>
-        // --- EXACT DATASET-COMPATIBLE CONFIGURATION ---
+        // --- CONFIGURATION (same as before) ---
         const MAP_DIMENSIONS = { width: 40, height: 40 };
 
         const COLORS = {
-            OBSTACLE: '#4a5568',    // Dark Gray - Buildings/City Park
-            SMALL_ROAD: '#d1d5db',  // Light Gray - Side Streets
-            LARGE_ROAD: '#9ca3af',  // Medium Gray - Major Avenues
-            TRAFFIC_JAM: '#f59e0b', // Amber - Heavy Traffic
-            ROAD_CLOSURE: '#dc2626', // Red - Road Closure
-            START: '#10b981',       // Emerald - Start Point
-            END: '#ef4444',         // Red - Destination
-            PATH: '#3b82f6',        // Blue - Predicted Route
+            OBSTACLE: '#4a5568',
+            SMALL_ROAD: '#d1d5db',
+            LARGE_ROAD: '#9ca3af',
+            TRAFFIC_JAM: '#f59e0b',
+            ROAD_CLOSURE: '#dc2626',
+            START: '#10b981',
+            END: '#ef4444',
+            PATH: '#3b82f6',
             VEHICLE: {
-                easy: '#34d399',   // Bike - Green
-                normal: '#60a5fa', // Car - Blue
-                hard: '#facc15',   // Van - Yellow
-                expert: '#f87171', // Truck - Red
+                easy: '#34d399',
+                normal: '#60a5fa', 
+                hard: '#facc15',
+                expert: '#f87171',
             }
         };
 
-        // EXACT SAME TILE TYPES AS DATASET
         const TILE_TYPES = {
             OBSTACLE: 0,
             SMALL_ROAD: 1,
             LARGE_ROAD: 2,
-            DIAGONAL: 3,  // Main diagonal thoroughfare
+            DIAGONAL: 3,
         };
 
-        // EXACT SAME VEHICLE CONFIG AS DATASET
         const VEHICLE_CONFIG = {
             easy:   { name: 'Bike',   allowed_roads: [TILE_TYPES.SMALL_ROAD, TILE_TYPES.LARGE_ROAD, TILE_TYPES.DIAGONAL] },
             normal: { name: 'Car',    allowed_roads: [TILE_TYPES.SMALL_ROAD, TILE_TYPES.LARGE_ROAD, TILE_TYPES.DIAGONAL] },
@@ -215,18 +250,9 @@
             expert: { name: 'Truck',  allowed_roads: [TILE_TYPES.LARGE_ROAD] },
         };
 
-        // EXACT SAME HRM TOKEN MAPPING AS DATASET
         const HRM_TOKEN_MAP = {
-            PAD: 0,           // Padding token
-            OBSTACLE: 1,      // Buildings/City Park
-            SMALL_ROAD: 2,    // Side Streets  
-            LARGE_ROAD: 3,    // Major Avenues
-            DIAGONAL: 4,      // Main diagonal thoroughfare
-            TRAFFIC_JAM: 5,   // Heavy Traffic
-            ROAD_CLOSURE: 6,  // Road Closure
-            START: 7,         // Start Point
-            END: 8,           // End Point
-            PATH: 9           // Optimal Route
+            PAD: 0, OBSTACLE: 1, SMALL_ROAD: 2, LARGE_ROAD: 3, DIAGONAL: 4,
+            TRAFFIC_JAM: 5, ROAD_CLOSURE: 6, START: 7, END: 8, PATH: 9
         };
         
         // --- DOM Elements ---
@@ -235,11 +261,16 @@
         const predictBtn = document.getElementById('predict-btn');
         const generateMapBtn = document.getElementById('generate-map-btn');
         const compareOracleBtn = document.getElementById('compare-oracle-btn');
+        const animateReasoningBtn = document.getElementById('animate-reasoning-btn');
         const testConnectionBtn = document.getElementById('test-connection-btn');
         const statusEl = document.getElementById('status');
         const modelStatusEl = document.getElementById('model-status');
         const difficultyButtons = document.getElementById('difficulty-buttons');
         const timeSelector = document.getElementById('time-selector');
+        const logReasoningCheckbox = document.getElementById('log-reasoning');
+        const reasoningPanel = document.getElementById('reasoning-panel');
+        const reasoningSteps = document.getElementById('reasoning-steps');
+        const reasoningSummary = document.getElementById('reasoning-summary');
         const resultsPanel = document.getElementById('results-panel');
         const hrmResult = document.getElementById('hrm-result');
         const oracleResult = document.getElementById('oracle-result');
@@ -256,12 +287,12 @@
         let tileSize = 1;
         let lastHrmPrediction = null;
         let lastOraclePath = null;
+        let lastReasoningSteps = [];
 
-        // --- EXACT SAME MAP GENERATION AS DATASET ---
+        // --- Map Generation (same functions as before) ---
         function generateMap() {
             grid = Array(MAP_DIMENSIONS.height).fill(null).map(() => Array(MAP_DIMENSIONS.width).fill(TILE_TYPES.OBSTACLE));
 
-            // Generate deterministic road network (same as dataset)
             const avenues = [3, 8, 13, 18, 23, 28, 33, 37];
             for (let avenue of avenues) {
                 for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
@@ -283,7 +314,6 @@
                 }
             }
 
-            // Add side streets
             for (let y = 4; y < MAP_DIMENSIONS.height; y += 4) {
                 for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
                     if (grid[y][x] === TILE_TYPES.OBSTACLE) {
@@ -300,7 +330,6 @@
                 }
             }
 
-            // Add main diagonal (same as dataset)
             for (let i = 0; i < MAP_DIMENSIONS.width - 5; i++) {
                 const x = i;
                 const y = Math.floor((i * MAP_DIMENSIONS.height) / MAP_DIMENSIONS.width);
@@ -310,7 +339,6 @@
                 }
             }
 
-            // Add Central Park (same as dataset)
             const parkStartX = Math.floor(MAP_DIMENSIONS.width * 0.4);
             const parkEndX = Math.floor(MAP_DIMENSIONS.width * 0.65);
             const parkStartY = Math.floor(MAP_DIMENSIONS.height * 0.15);
@@ -328,7 +356,6 @@
             updateTrafficAndDraw();
         }
 
-        // --- EXACT SAME START/END PLACEMENT AS DATASET ---
         function placeStartAndEnd() {
             const roadPositions = [];
             
@@ -372,7 +399,6 @@
             }
         }
 
-        // --- EXACT SAME TRAFFIC GENERATION AS DATASET ---
         function addTraffic(baseGrid, hour) {
             let newTrafficGrid = baseGrid.map(row => [...row]);
             
@@ -416,10 +442,11 @@
         function updateTrafficAndDraw() {
             trafficGrid = addTraffic(grid, currentHour);
             drawMap(trafficGrid);
+            reasoningPanel.classList.add('hidden');
             resultsPanel.classList.add('hidden');
+            animateReasoningBtn.disabled = true;
         }
 
-        // --- EXACT SAME HRM TOKENIZATION AS DATASET ---
         function gridToHRMSequence(baseGrid, trafficGrid, startPos, endPos) {
             const sequence = new Array(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height);
             
@@ -450,28 +477,19 @@
             return sequence;
         }
 
-        function hrmSequenceToPath(sequence) {
-            const path = [];
-            for (let i = 0; i < sequence.length; i++) {
-                if (sequence[i] === HRM_TOKEN_MAP.PATH) {
-                    const y = Math.floor(i / MAP_DIMENSIONS.width);
-                    const x = i % MAP_DIMENSIONS.width;
-                    path.push({ x, y });
-                }
-            }
-            return path;
-        }
-
-        // --- HRM PREDICTION ---
+        // --- Enhanced HRM Prediction with Reasoning Logs ---
         async function getHRMPrediction(inputSequence) {
-            statusEl.textContent = '🧠 HRM is thinking...';
+            statusEl.textContent = '🧠 HRM is thinking step-by-step...';
             predictBtn.disabled = true;
 
             try {
                 const response = await fetch('http://127.0.0.1:5000/predict', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ inputs: inputSequence })
+                    body: JSON.stringify({ 
+                        inputs: inputSequence,
+                        log_intermediate: logReasoningCheckbox.checked
+                    })
                 });
 
                 if (!response.ok) {
@@ -479,9 +497,21 @@
                 }
 
                 const result = await response.json();
-                const predictedPathSequence = result.path;
+                
+                // Store reasoning steps
+                lastReasoningSteps = result.reasoning_steps || [];
+                
+                // Display reasoning analysis
+                if (lastReasoningSteps.length > 0) {
+                    displayReasoningSteps(lastReasoningSteps);
+                    reasoningPanel.classList.remove('hidden');
+                    animateReasoningBtn.disabled = false;
+                }
+                
                 predictBtn.disabled = false;
-                return hrmSequenceToPath(predictedPathSequence);
+                
+                // Return path coordinates for visualization
+                return result.path_coords || [];
 
             } catch (error) {
                 console.error("Error getting prediction:", error);
@@ -491,7 +521,79 @@
             }
         }
 
-        // --- A* ORACLE FOR COMPARISON ---
+        function displayReasoningSteps(steps) {
+            reasoningSteps.innerHTML = '';
+            reasoningSummary.innerHTML = '';
+            
+            // Display each step
+            steps.forEach((step, index) => {
+                const stepDiv = document.createElement('div');
+                stepDiv.className = `reasoning-step ${step.halted ? 'final' : ''}`;
+                
+                const pathLength = step.path_length || 0;
+                const stepType = step.halted ? '🎯 Final' : '🔍 Exploring';
+                
+                stepDiv.innerHTML = `
+                    <div class="font-medium">${stepType} Step ${step.step}</div>
+                    <div class="text-gray-600">Path length: ${pathLength} waypoints</div>
+                `;
+                
+                reasoningSteps.appendChild(stepDiv);
+            });
+            
+            // Display summary
+            const totalSteps = steps.length;
+            const finalStep = steps[steps.length - 1];
+            const finalPathLength = finalStep?.path_length || 0;
+            
+            reasoningSummary.innerHTML = `
+                <div><strong>Total reasoning steps:</strong> ${totalSteps}</div>
+                <div><strong>Final path length:</strong> ${finalPathLength} waypoints</div>
+                <div><strong>Reasoning type:</strong> ${totalSteps > 1 ? 'Multi-step deliberation' : 'Immediate solution'}</div>
+                <div class="mt-2 p-2 bg-blue-50 rounded text-blue-700">
+                    <strong>Analysis:</strong> ${totalSteps > 1 ? 
+                        'HRM used multiple reasoning steps to refine its solution' : 
+                        'HRM found a direct solution without additional refinement'}
+                </div>
+            `;
+        }
+
+        // --- Reasoning Animation ---
+        async function animateReasoning() {
+            if (lastReasoningSteps.length === 0) return;
+            
+            animateReasoningBtn.disabled = true;
+            statusEl.textContent = '🎬 Animating HRM reasoning process...';
+            
+            for (let i = 0; i < lastReasoningSteps.length; i++) {
+                const step = lastReasoningSteps[i];
+                const path = step.path || [];
+                
+                // Highlight current step in reasoning panel
+                const stepElements = reasoningSteps.children;
+                for (let j = 0; j < stepElements.length; j++) {
+                    stepElements[j].style.backgroundColor = j === i ? '#dbeafe' : '';
+                }
+                
+                // Draw map with current reasoning step
+                drawMap(trafficGrid, path);
+                statusEl.textContent = `🧠 Step ${step.step}: ${path.length} waypoints${step.halted ? ' (Final)' : ''}`;
+                
+                // Wait before next step
+                await new Promise(resolve => setTimeout(resolve, step.halted ? 2000 : 1500));
+            }
+            
+            // Reset highlighting
+            const stepElements = reasoningSteps.children;
+            for (let j = 0; j < stepElements.length; j++) {
+                stepElements[j].style.backgroundColor = '';
+            }
+            
+            animateReasoningBtn.disabled = false;
+            statusEl.textContent = '✅ Reasoning animation complete';
+        }
+
+        // --- Rest of the functions (A*, visualization, etc.) remain the same ---
         function solvePathAStar(dynamicGrid, start, end, vehicle) {
             const openSet = [start];
             const cameFrom = {};
@@ -600,7 +702,6 @@
             return totalCost;
         }
 
-        // --- VISUALIZATION ---
         function drawMap(dynamicGrid, path = []) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
 
@@ -664,7 +765,7 @@
             animationLoop();
         }
 
-        // --- EVENT HANDLERS ---
+        // --- Event Handlers (updated for new features) ---
         async function handlePredict() {
             if (isAnimating) return;
             const inputSequence = gridToHRMSequence(grid, trafficGrid, startPos, endPos);
@@ -681,13 +782,11 @@
             statusEl.textContent = '⚖️ Computing A* oracle and comparing...';
             compareOracleBtn.disabled = true;
             
-            // Get HRM prediction if not already done
             if (!lastHrmPrediction) {
                 const inputSequence = gridToHRMSequence(grid, trafficGrid, startPos, endPos);
                 lastHrmPrediction = await getHRMPrediction(inputSequence);
             }
             
-            // Get A* oracle solution
             const vehicle = VEHICLE_CONFIG[currentDifficulty];
             lastOraclePath = solvePathAStar(trafficGrid, startPos, endPos, vehicle);
             
@@ -706,7 +805,6 @@
             
             resultsPanel.classList.remove('hidden');
             
-            // HRM results
             if (lastHrmPrediction) {
                 const hrmCost = lastHrmPrediction.length > 0 ? calculatePathCost(lastHrmPrediction, trafficGrid) : 'N/A';
                 hrmResult.innerHTML = `
@@ -717,7 +815,6 @@
                 hrmResult.innerHTML = '<div>Not computed</div>';
             }
             
-            // Oracle results
             if (lastOraclePath) {
                 const oracleCost = lastOraclePath.length > 0 ? calculatePathCost(lastOraclePath, trafficGrid) : 'N/A';
                 oracleResult.innerHTML = `
@@ -728,7 +825,6 @@
                 oracleResult.innerHTML = '<div>Not computed</div>';
             }
             
-            // Comparison
             if (lastHrmPrediction && lastOraclePath) {
                 const hrmValid = lastHrmPrediction.length > 0;
                 const oracleValid = lastOraclePath.length > 0;
@@ -760,11 +856,7 @@
             modelStatusEl.textContent = 'Testing connection...';
             
             try {
-                const response = await fetch('http://127.0.0.1:5000/predict', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ inputs: new Array(1600).fill(0) })
-                });
+                const response = await fetch('http://127.0.0.1:5000/health');
                 
                 if (response.ok) {
                     modelStatusEl.textContent = '✅ HRM server connected and ready';
@@ -796,10 +888,12 @@
             
             statusEl.textContent = `Selected: ${VEHICLE_CONFIG[currentDifficulty].name}. Generate scenario or get HRM prediction.`;
             
-            // Reset predictions when vehicle changes
             lastHrmPrediction = null;
             lastOraclePath = null;
+            lastReasoningSteps = [];
+            reasoningPanel.classList.add('hidden');
             resultsPanel.classList.add('hidden');
+            animateReasoningBtn.disabled = true;
             
             if (grid.length > 0 && !isAnimating) {
                 updateTrafficAndDraw();
@@ -820,11 +914,13 @@
             window.addEventListener('resize', resizeCanvas);
             predictBtn.addEventListener('click', handlePredict);
             compareOracleBtn.addEventListener('click', handleCompareOracle);
+            animateReasoningBtn.addEventListener('click', animateReasoning);
             testConnectionBtn.addEventListener('click', testModelConnection);
             generateMapBtn.addEventListener('click', () => {
                 if (isAnimating) return;
                 lastHrmPrediction = null;
                 lastOraclePath = null;
+                lastReasoningSteps = [];
                 generateMap();
                 statusEl.textContent = 'New scenario generated. Ready for HRM evaluation.';
             });
@@ -833,14 +929,14 @@
                 currentHour = parseInt(timeSelector.value);
                 lastHrmPrediction = null;
                 lastOraclePath = null;
+                lastReasoningSteps = [];
                 if (grid.length > 0 && !isAnimating) updateTrafficAndDraw();
             });
             
-            // Set initial active button
             difficultyButtons.querySelector(`[data-difficulty="${currentDifficulty}"]`).classList.add('bg-blue-500', 'text-white');
             generateMap();
             testModelConnection();
-            statusEl.textContent = 'Dataset-compatible evaluation ready. Generate scenario and test HRM.';
+            statusEl.textContent = 'Enhanced HRM evaluation ready. Enable reasoning logs to see step-by-step thinking.';
         }
 
         document.addEventListener('DOMContentLoaded', init);
