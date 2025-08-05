@@ -18,7 +18,7 @@ DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 print(f">>> Using device: {DEVICE}")
 
 # Update this path to your trained model
-CHECKPOINT_PATH = "checkpoints/City-logistics-1k ACT-torch/HierarchicalReasoningModel_ACTV1 cordial-vole/step_22400"
+CHECKPOINT_PATH = "checkpoints/City-logistics-1k ACT-torch/HierarchicalReasoningModel_ACTV1 violet-potoo/step_2240"
 
 def load_model_and_config():
     """Load the trained model and its configuration"""
