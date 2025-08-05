@@ -14,7 +14,7 @@ data_path: data/city-logistics-1k
 global_batch_size: 32  # Fixed for RTX 3070 Ti memory
 
 epochs: 100
-eval_interval: 1
+eval_interval: 10
 checkpoint_every_eval: True
 
 lr: 1e-4
