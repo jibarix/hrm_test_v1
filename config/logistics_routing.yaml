@@ -17,12 +17,14 @@ epochs: 10
 eval_interval: 1
 checkpoint_every_eval: True
 
-lr: 1e-4
-lr_min_ratio: 1.0
-lr_warmup_steps: 640    # FIXED: ~2x data passes in BATCHES
-                        # 640 samples ÷ 32 batch_size = 20 batches
-                        # 20 batches ÷ 30 batches_per_epoch = 0.67 epochs
-                        # This ensures warmup completes early in training
+lr: 1e-5
+lr_min_ratio: 1.0       # CRITICAL FOR STABILITY: Adhering to the paper's "constant LR" method.
+lr_warmup_steps: 1920   # CRITICAL FOR STABILITY: Providing a much longer warmup period (2 full data passes)
+                        # CORRECTED: Warmup over the first 2 full passes of the data.                        
+                        # This is the most critical change for stability.
+                        # 960 training examples / 32 batch_size = 30 batches/epoch.
+                        # 30 batches/epoch * 2 epochs = 60 batches for warmup.
+                        # 60 batches * 32 samples/batch = 1920 steps.
 
 # Standard hyperparameter settings for LM, as used in Llama
 beta1: 0.9
@@ -40,7 +42,6 @@ seed: 42
 # - Paper: 2000 warmup steps with 960 samples = 2.08x data passes
 # - Our config: 1920 warmup steps with 960 samples = 2.0x data passes
 # - This matches the "seeing data 2x before pretrain" observation
-# - Much more reasonable than my original misinterpretation
 
 # **HRM Hyperparameter Analysis Table**
 # | Parameter | Purpose | Training Effect | Paper/Code Context | Original Value | Our Value |

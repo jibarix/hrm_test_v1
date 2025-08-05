@@ -18,7 +18,7 @@ print(f">>> Using device: {DEVICE}")
 # ---------------------------
 # --- IMPORTANT ---
 # Update this path to point to your trained model checkpoint
-CHECKPOINT_PATH = "checkpoints/Logistics-routing-1k ACT-torch/HierarchicalReasoningModel_ACTV1 rigorous-mushroom/step_310"
+CHECKPOINT_PATH = "checkpoints/City-logistics-1k ACT-torch/HierarchicalReasoningModel_ACTV1 rousing-turtle/step_70"
 # --- IMPORTANT ---
 
 # Load the configuration file that was saved during training
@@ -94,13 +94,24 @@ def predict():
         # The model uses a 'carry' state for its recurrent nature. We initialize it.
         carry = model.initial_carry(dummy_batch)
         
-        # --- FIX: Manually move all tensors in the carry state to the correct device ---
-        # This is necessary because the model's initial_carry function creates some tensors on the CPU by default.
-        carry.inner_carry.z_H = carry.inner_carry.z_H.to(DEVICE)
-        carry.inner_carry.z_L = carry.inner_carry.z_L.to(DEVICE)
-        carry.steps = carry.steps.to(DEVICE)
-        carry.halted = carry.halted.to(DEVICE)
-        # carry.current_data is already on the correct device due to torch.empty_like()
+        # --- CORRECTED & ROBUST CARRY-TO-DEVICE LOGIC ---
+        # The model's initial_carry method may create tensors on CPU.
+        # This fix recursively moves all tensors within the carry object to the correct device.
+        def move_to_device(obj, device):
+            if hasattr(obj, 'to'):
+                return obj.to(device)
+            if isinstance(obj, (list, tuple)):
+                return type(obj)(move_to_device(x, device) for x in obj)
+            if isinstance(obj, dict):
+                return {k: move_to_device(v, device) for k, v in obj.items()}
+            # Recurse through object attributes
+            if hasattr(obj, '__dict__'):
+                for attr, value in obj.__dict__.items():
+                    setattr(obj, attr, move_to_device(value, device))
+            return obj
+
+        carry = move_to_device(carry, DEVICE)
+        # --- END CORRECTION ---
         
         # The model might take multiple steps to "think". We loop until it has halted.
         while True:

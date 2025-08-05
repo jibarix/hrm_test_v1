@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HRM Logistics Routing - Live Evaluation</title>
+    <title>HRM City Logistics Evaluation - Dataset Compatible</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
@@ -41,8 +41,21 @@
 
     <div class="w-full max-w-4xl mx-auto bg-white rounded-xl shadow-lg p-4 sm:p-6">
         <div class="text-center mb-4">
-            <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">HRM Logistics Routing - Live Evaluation</h1>
-            <p class="text-gray-500 mt-1">Testing the trained Hierarchical Reasoning Model</p>
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">HRM City Logistics Evaluation</h1>
+            <p class="text-gray-500 mt-1">Testing trained HRM on paper-compatible city routing scenarios</p>
+        </div>
+
+        <!-- Model Status -->
+        <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
+            <div class="flex items-center justify-between">
+                <div>
+                    <h3 class="font-semibold text-blue-800">Model Connection Status</h3>
+                    <p class="text-sm text-blue-700" id="model-status">Checking connection to HRM server...</p>
+                </div>
+                <button id="test-connection-btn" class="btn bg-blue-500 text-white px-4 py-2 rounded-lg shadow-md">
+                    Test Connection
+                </button>
+            </div>
         </div>
 
         <!-- Evaluation Controls -->
@@ -62,38 +75,100 @@
                     <select id="time-selector" class="bg-white border border-gray-300 rounded-lg px-3 py-2 shadow-md">
                         <option value="6">6:00 AM - Early Morning</option>
                         <option value="8" selected>8:00 AM - Rush Hour</option>
+                        <option value="10">10:00 AM - Mid Morning</option>
                         <option value="12">12:00 PM - Lunch Hour</option>
+                        <option value="14">2:00 PM - Afternoon</option>
                         <option value="17">5:00 PM - Evening Rush</option>
+                        <option value="20">8:00 PM - Evening</option>
                         <option value="23">11:00 PM - Late Night</option>
                     </select>
                 </div>
             </div>
             <div class="text-center">
                 <button id="generate-map-btn" class="btn bg-blue-500 text-white font-bold px-6 py-2 rounded-lg shadow-lg">
-                    🗺️ New Random Map
+                    🗺️ Generate New Scenario
                 </button>
                 <button id="predict-btn" class="btn bg-green-500 text-white font-bold px-6 py-2 rounded-lg shadow-lg ml-2">
                     🧠 Get HRM Prediction
+                </button>
+                <button id="compare-oracle-btn" class="btn bg-purple-500 text-white font-bold px-4 py-2 rounded-lg shadow-lg ml-2">
+                    ⚖️ Compare vs A* Oracle
                 </button>
             </div>
         </div>
         
         <p id="status" class="text-center text-gray-600 h-6 mb-4"></p>
 
+        <!-- Results Display -->
+        <div id="results-panel" class="bg-gray-50 rounded-lg p-4 mb-4 hidden">
+            <h3 class="text-lg font-semibold text-gray-800 mb-3 text-center">Evaluation Results</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div class="text-center">
+                    <div class="font-medium text-blue-600">HRM Prediction</div>
+                    <div id="hrm-result" class="text-gray-700"></div>
+                </div>
+                <div class="text-center">
+                    <div class="font-medium text-purple-600">A* Oracle</div>
+                    <div id="oracle-result" class="text-gray-700"></div>
+                </div>
+                <div class="text-center">
+                    <div class="font-medium text-green-600">Match Status</div>
+                    <div id="match-result" class="text-gray-700"></div>
+                </div>
+            </div>
+        </div>
+
         <!-- Legend -->
         <div class="bg-gray-50 rounded-lg p-4 mb-4">
-            <h3 class="text-lg font-semibold text-gray-800 mb-3 text-center">🗽 NYC Traffic Map Legend</h3>
+            <h3 class="text-lg font-semibold text-gray-800 mb-3 text-center">🏙️ City Traffic Map Legend</h3>
             <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
-                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #4a5568;"></div><span>Buildings/Park</span></div>
-                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #d1d5db;"></div><span>Side Streets</span></div>
-                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #9ca3af;"></div><span>Major Avenues</span></div>
-                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #a78bfa;"></div><span>Broadway</span></div>
-                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #f59e0b;"></div><span>Heavy Traffic</span></div>
-                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #dc2626;"></div><span>Road Closure</span></div>
-                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #10b981;"></div><span>Start Point</span></div>
-                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #ef4444;"></div><span>Destination</span></div>
-                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded" style="background-color: #3b82f6;"></div><span>Predicted Route</span></div>
-                <div class="flex items-center gap-2"><div class="w-4 h-4 rounded-full" style="background-color: #34d399;"></div><span>Vehicle</span></div>
+                <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 rounded" style="background-color: #4a5568;"></div>
+                    <span>Buildings/City Park</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 rounded" style="background-color: #d1d5db;"></div>
+                    <span>Side Streets</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 rounded" style="background-color: #9ca3af;"></div>
+                    <span>Major Avenues</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 rounded" style="background-color: #a78bfa;"></div>
+                    <span>Main Diagonal</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 rounded" style="background-color: #f59e0b;"></div>
+                    <span>Heavy Traffic</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 rounded" style="background-color: #dc2626;"></div>
+                    <span>Road Closure</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 rounded" style="background-color: #10b981;"></div>
+                    <span>Start Point</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 rounded" style="background-color: #ef4444;"></div>
+                    <span>Destination</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 rounded" style="background-color: #3b82f6;"></div>
+                    <span>Predicted Route</span>
+                </div>
+                <div class="flex items-center gap-2">
+                    <div class="w-4 h-4 rounded-full" style="background-color: #34d399;"></div>
+                    <span>Vehicle</span>
+                </div>
+            </div>
+            <div class="mt-3 pt-3 border-t border-gray-200">
+                <div class="text-xs text-gray-600 space-y-1">
+                    <div><span class="font-medium text-blue-600">🧠 HRM Evaluation:</span> Testing trained model on scenarios matching paper-compatible dataset</div>
+                    <div><span class="font-medium text-purple-600">⚖️ A* Oracle:</span> Optimal pathfinding comparison for validation</div>
+                    <div><span class="font-medium text-green-600">📊 Dataset Compatible:</span> Exact same map generation and tokenization as training data</div>
+                </div>
             </div>
         </div>
 
@@ -104,38 +179,54 @@
     </div>
 
     <script>
-        // --- Configuration ---
+        // --- EXACT DATASET-COMPATIBLE CONFIGURATION ---
         const MAP_DIMENSIONS = { width: 40, height: 40 };
 
         const COLORS = {
-            OBSTACLE: '#4a5568',
-            SMALL_ROAD: '#d1d5db',
-            LARGE_ROAD: '#9ca3af',
-            TRAFFIC_JAM: '#f59e0b',
-            ROAD_CLOSURE: '#dc2626',
-            START: '#10b981',
-            END: '#ef4444',
-            PATH: '#3b82f6',
+            OBSTACLE: '#4a5568',    // Dark Gray - Buildings/City Park
+            SMALL_ROAD: '#d1d5db',  // Light Gray - Side Streets
+            LARGE_ROAD: '#9ca3af',  // Medium Gray - Major Avenues
+            TRAFFIC_JAM: '#f59e0b', // Amber - Heavy Traffic
+            ROAD_CLOSURE: '#dc2626', // Red - Road Closure
+            START: '#10b981',       // Emerald - Start Point
+            END: '#ef4444',         // Red - Destination
+            PATH: '#3b82f6',        // Blue - Predicted Route
             VEHICLE: {
-                easy: '#34d399',
-                normal: '#60a5fa',
-                hard: '#facc15',
-                expert: '#f87171',
+                easy: '#34d399',   // Bike - Green
+                normal: '#60a5fa', // Car - Blue
+                hard: '#facc15',   // Van - Yellow
+                expert: '#f87171', // Truck - Red
             }
         };
 
+        // EXACT SAME TILE TYPES AS DATASET
         const TILE_TYPES = {
             OBSTACLE: 0,
             SMALL_ROAD: 1,
             LARGE_ROAD: 2,
-            BROADWAY: 3,
+            DIAGONAL: 3,  // Main diagonal thoroughfare
         };
 
+        // EXACT SAME VEHICLE CONFIG AS DATASET
         const VEHICLE_CONFIG = {
-            easy:   { name: 'Bike',   size: 1, allowed_roads: [TILE_TYPES.SMALL_ROAD, TILE_TYPES.LARGE_ROAD, TILE_TYPES.BROADWAY] },
-            normal: { name: 'Car',    size: 2, allowed_roads: [TILE_TYPES.SMALL_ROAD, TILE_TYPES.LARGE_ROAD, TILE_TYPES.BROADWAY] },
-            hard:   { name: 'Van',    size: 3, allowed_roads: [TILE_TYPES.LARGE_ROAD, TILE_TYPES.BROADWAY] },
-            expert: { name: 'Truck',  size: 4, allowed_roads: [TILE_TYPES.LARGE_ROAD] },
+            easy:   { name: 'Bike',   allowed_roads: [TILE_TYPES.SMALL_ROAD, TILE_TYPES.LARGE_ROAD, TILE_TYPES.DIAGONAL] },
+            normal: { name: 'Car',    allowed_roads: [TILE_TYPES.SMALL_ROAD, TILE_TYPES.LARGE_ROAD, TILE_TYPES.DIAGONAL] },
+            hard:   { name: 'Van',    allowed_roads: [TILE_TYPES.LARGE_ROAD, TILE_TYPES.DIAGONAL] },
+            expert: { name: 'Truck',  allowed_roads: [TILE_TYPES.LARGE_ROAD] },
+        };
+
+        // EXACT SAME HRM TOKEN MAPPING AS DATASET
+        const HRM_TOKEN_MAP = {
+            PAD: 0,           // Padding token
+            OBSTACLE: 1,      // Buildings/City Park
+            SMALL_ROAD: 2,    // Side Streets  
+            LARGE_ROAD: 3,    // Major Avenues
+            DIAGONAL: 4,      // Main diagonal thoroughfare
+            TRAFFIC_JAM: 5,   // Heavy Traffic
+            ROAD_CLOSURE: 6,  // Road Closure
+            START: 7,         // Start Point
+            END: 8,           // End Point
+            PATH: 9           // Optimal Route
         };
         
         // --- DOM Elements ---
@@ -143,9 +234,16 @@
         const ctx = canvas.getContext('2d');
         const predictBtn = document.getElementById('predict-btn');
         const generateMapBtn = document.getElementById('generate-map-btn');
+        const compareOracleBtn = document.getElementById('compare-oracle-btn');
+        const testConnectionBtn = document.getElementById('test-connection-btn');
         const statusEl = document.getElementById('status');
+        const modelStatusEl = document.getElementById('model-status');
         const difficultyButtons = document.getElementById('difficulty-buttons');
         const timeSelector = document.getElementById('time-selector');
+        const resultsPanel = document.getElementById('results-panel');
+        const hrmResult = document.getElementById('hrm-result');
+        const oracleResult = document.getElementById('oracle-result');
+        const matchResult = document.getElementById('match-result');
 
         // --- Game State ---
         let currentDifficulty = 'easy';
@@ -156,18 +254,179 @@
         let endPos = null;
         let isAnimating = false;
         let tileSize = 1;
+        let lastHrmPrediction = null;
+        let lastOraclePath = null;
 
-        // --- HRM Tokenization ---
-        const HRM_TOKEN_MAP = {
-            PAD: 0, OBSTACLE: 1, SMALL_ROAD: 2, LARGE_ROAD: 3, BROADWAY: 4,
-            TRAFFIC_JAM: 5, ROAD_CLOSURE: 6, START: 7, END: 8, PATH: 9
-        };
+        // --- EXACT SAME MAP GENERATION AS DATASET ---
+        function generateMap() {
+            grid = Array(MAP_DIMENSIONS.height).fill(null).map(() => Array(MAP_DIMENSIONS.width).fill(TILE_TYPES.OBSTACLE));
 
+            // Generate deterministic road network (same as dataset)
+            const avenues = [3, 8, 13, 18, 23, 28, 33, 37];
+            for (let avenue of avenues) {
+                for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
+                    if (avenue < MAP_DIMENSIONS.width) {
+                        grid[y][avenue] = TILE_TYPES.LARGE_ROAD;
+                        if (avenue + 1 < MAP_DIMENSIONS.width) {
+                            grid[y][avenue + 1] = TILE_TYPES.LARGE_ROAD;
+                        }
+                    }
+                }
+            }
+
+            const streets = [2, 6, 10, 14, 18, 22, 26, 30, 34, 37];
+            for (let street of streets) {
+                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
+                    if (street < MAP_DIMENSIONS.height) {
+                        grid[street][x] = TILE_TYPES.LARGE_ROAD;
+                    }
+                }
+            }
+
+            // Add side streets
+            for (let y = 4; y < MAP_DIMENSIONS.height; y += 4) {
+                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
+                    if (grid[y][x] === TILE_TYPES.OBSTACLE) {
+                        grid[y][x] = TILE_TYPES.SMALL_ROAD;
+                    }
+                }
+            }
+
+            for (let x = 5; x < MAP_DIMENSIONS.width; x += 6) {
+                for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
+                    if (grid[y][x] === TILE_TYPES.OBSTACLE) {
+                        grid[y][x] = TILE_TYPES.SMALL_ROAD;
+                    }
+                }
+            }
+
+            // Add main diagonal (same as dataset)
+            for (let i = 0; i < MAP_DIMENSIONS.width - 5; i++) {
+                const x = i;
+                const y = Math.floor((i * MAP_DIMENSIONS.height) / MAP_DIMENSIONS.width);
+                if (y < MAP_DIMENSIONS.height && x < MAP_DIMENSIONS.width) {
+                    grid[y][x] = TILE_TYPES.DIAGONAL;
+                    if (y + 1 < MAP_DIMENSIONS.height) grid[y + 1][x] = TILE_TYPES.DIAGONAL;
+                }
+            }
+
+            // Add Central Park (same as dataset)
+            const parkStartX = Math.floor(MAP_DIMENSIONS.width * 0.4);
+            const parkEndX = Math.floor(MAP_DIMENSIONS.width * 0.65);
+            const parkStartY = Math.floor(MAP_DIMENSIONS.height * 0.15);
+            const parkEndY = Math.floor(MAP_DIMENSIONS.height * 0.45);
+            
+            for (let y = parkStartY; y < parkEndY; y++) {
+                for (let x = parkStartX; x < parkEndX; x++) {
+                    if (x < MAP_DIMENSIONS.width && y < MAP_DIMENSIONS.height) {
+                        grid[y][x] = TILE_TYPES.OBSTACLE;
+                    }
+                }
+            }
+
+            placeStartAndEnd();
+            updateTrafficAndDraw();
+        }
+
+        // --- EXACT SAME START/END PLACEMENT AS DATASET ---
+        function placeStartAndEnd() {
+            const roadPositions = [];
+            
+            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
+                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
+                    if (grid[y][x] !== TILE_TYPES.OBSTACLE) {
+                        const edgeDistance = Math.min(x, y, MAP_DIMENSIONS.width - 1 - x, MAP_DIMENSIONS.height - 1 - y);
+                        if (edgeDistance >= 2) {
+                            roadPositions.push({ x, y });
+                        }
+                    }
+                }
+            }
+
+            if (roadPositions.length >= 2) {
+                let attempts = 0;
+                do {
+                    const startIdx = Math.floor(Math.random() * roadPositions.length);
+                    startPos = roadPositions[startIdx];
+                    
+                    const validEndPositions = roadPositions.filter(pos => {
+                        const distance = Math.abs(pos.x - startPos.x) + Math.abs(pos.y - startPos.y);
+                        return distance >= 15 && distance <= 50;
+                    });
+                    
+                    if (validEndPositions.length > 0) {
+                        endPos = validEndPositions[Math.floor(Math.random() * validEndPositions.length)];
+                        break;
+                    }
+                    
+                    attempts++;
+                } while (attempts < 10);
+                
+                if (attempts >= 10) {
+                    startPos = roadPositions[0];
+                    endPos = roadPositions[roadPositions.length - 1];
+                }
+            } else {
+                startPos = { x: 5, y: 5 };
+                endPos = { x: MAP_DIMENSIONS.width - 5, y: MAP_DIMENSIONS.height - 5 };
+            }
+        }
+
+        // --- EXACT SAME TRAFFIC GENERATION AS DATASET ---
+        function addTraffic(baseGrid, hour) {
+            let newTrafficGrid = baseGrid.map(row => [...row]);
+            
+            let trafficIntensity = 0;
+            let constructionActive = false;
+            
+            if (hour >= 7 && hour <= 9) {
+                trafficIntensity = 0.4;
+            } else if (hour >= 17 && hour <= 19) {
+                trafficIntensity = 0.45;
+            } else if (hour >= 12 && hour <= 13) {
+                trafficIntensity = 0.25;
+            } else if (hour >= 2 && hour <= 5) {
+                constructionActive = true;
+                trafficIntensity = 0.1;
+            } else {
+                trafficIntensity = 0.1;
+            }
+
+            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
+                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
+                    const roadType = baseGrid[y][x];
+                    
+                    if (roadType === TILE_TYPES.LARGE_ROAD || roadType === TILE_TYPES.DIAGONAL) {
+                        if (constructionActive && Math.random() < 0.05) {
+                            newTrafficGrid[y][x] = 'ROAD_CLOSURE';
+                        } else if (Math.random() < trafficIntensity) {
+                            newTrafficGrid[y][x] = 'TRAFFIC_JAM';
+                        }
+                    } else if (roadType === TILE_TYPES.SMALL_ROAD) {
+                        if (Math.random() < trafficIntensity * 0.3) {
+                            newTrafficGrid[y][x] = 'TRAFFIC_JAM';
+                        }
+                    }
+                }
+            }
+
+            return newTrafficGrid;
+        }
+
+        function updateTrafficAndDraw() {
+            trafficGrid = addTraffic(grid, currentHour);
+            drawMap(trafficGrid);
+            resultsPanel.classList.add('hidden');
+        }
+
+        // --- EXACT SAME HRM TOKENIZATION AS DATASET ---
         function gridToHRMSequence(baseGrid, trafficGrid, startPos, endPos) {
             const sequence = new Array(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height);
+            
             for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
                 for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
                     const idx = y * MAP_DIMENSIONS.width + x;
+                    
                     if (startPos && startPos.x === x && startPos.y === y) {
                         sequence[idx] = HRM_TOKEN_MAP.START;
                     } else if (endPos && endPos.x === x && endPos.y === y) {
@@ -181,12 +440,13 @@
                             case TILE_TYPES.OBSTACLE: sequence[idx] = HRM_TOKEN_MAP.OBSTACLE; break;
                             case TILE_TYPES.SMALL_ROAD: sequence[idx] = HRM_TOKEN_MAP.SMALL_ROAD; break;
                             case TILE_TYPES.LARGE_ROAD: sequence[idx] = HRM_TOKEN_MAP.LARGE_ROAD; break;
-                            case TILE_TYPES.BROADWAY: sequence[idx] = HRM_TOKEN_MAP.BROADWAY; break;
+                            case TILE_TYPES.DIAGONAL: sequence[idx] = HRM_TOKEN_MAP.DIAGONAL; break;
                             default: sequence[idx] = HRM_TOKEN_MAP.OBSTACLE;
                         }
                     }
                 }
             }
+            
             return sequence;
         }
 
@@ -202,13 +462,12 @@
             return path;
         }
 
+        // --- HRM PREDICTION ---
         async function getHRMPrediction(inputSequence) {
             statusEl.textContent = '🧠 HRM is thinking...';
             predictBtn.disabled = true;
 
             try {
-                // --- REAL-WORLD IMPLEMENTATION ---
-                // This now calls your local Python server.
                 const response = await fetch('http://127.0.0.1:5000/predict', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -221,111 +480,130 @@
 
                 const result = await response.json();
                 const predictedPathSequence = result.path;
-                // ---------------------------------
-
-                /*
-                // --- LOCAL SIMULATION (using A* oracle) - NOW COMMENTED OUT ---
-                await new Promise(resolve => setTimeout(resolve, 1000));
-                const vehicle = VEHICLE_CONFIG[currentDifficulty];
-                const oraclePath = solvePathAStar(trafficGrid, startPos, endPos, vehicle);
-                const predictedPathSequence = new Array(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height).fill(HRM_TOKEN_MAP.PAD);
-                for (const pos of oraclePath) {
-                    const idx = pos.y * MAP_DIMENSIONS.width + pos.x;
-                    predictedPathSequence[idx] = HRM_TOKEN_MAP.PATH;
-                }
-                */
-
                 predictBtn.disabled = false;
                 return hrmSequenceToPath(predictedPathSequence);
 
             } catch (error) {
                 console.error("Error getting prediction:", error);
-                statusEl.textContent = "❌ Could not connect to model server. Is it running?";
+                statusEl.textContent = "❌ Could not connect to HRM server. Is it running?";
                 predictBtn.disabled = false;
-                return []; // Return an empty path on error
+                return [];
             }
         }
 
+        // --- A* ORACLE FOR COMPARISON ---
+        function solvePathAStar(dynamicGrid, start, end, vehicle) {
+            const openSet = [start];
+            const cameFrom = {};
+            const closedSet = new Set();
+            
+            const gScore = {};
+            const fScore = {};
 
-        // --- Core Functions (Map Generation, Drawing, A*) ---
+            const startKey = `${start.x},${start.y}`;
+            gScore[startKey] = 0;
+            fScore[startKey] = heuristic(start, end);
 
-        function generateMap() {
-            grid = Array(MAP_DIMENSIONS.height).fill(null).map(() => Array(MAP_DIMENSIONS.width).fill(TILE_TYPES.OBSTACLE));
-            const avenues = [3, 8, 13, 18, 23, 28, 33, 37];
-            for (let avenue of avenues) {
-                for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
-                    if (avenue + 1 < MAP_DIMENSIONS.width) {
-                        grid[y][avenue] = TILE_TYPES.LARGE_ROAD;
-                        grid[y][avenue + 1] = TILE_TYPES.LARGE_ROAD;
+            while (openSet.length > 0) {
+                let current = openSet[0];
+                let currentIndex = 0;
+                for (let i = 1; i < openSet.length; i++) {
+                    const currentF = fScore[`${openSet[i].x},${openSet[i].y}`] || Infinity;
+                    const bestF = fScore[`${current.x},${current.y}`] || Infinity;
+                    if (currentF < bestF) {
+                        current = openSet[i];
+                        currentIndex = i;
+                    }
+                }
+
+                if (current.x === end.x && current.y === end.y) {
+                    return reconstructPath(cameFrom, current);
+                }
+
+                openSet.splice(currentIndex, 1);
+                closedSet.add(`${current.x},${current.y}`);
+                
+                const neighbors = getNeighbors(current, dynamicGrid, vehicle);
+                for (const neighbor of neighbors) {
+                    const neighborKey = `${neighbor.x},${neighbor.y}`;
+                    const currentKey = `${current.x},${current.y}`;
+                    
+                    if (closedSet.has(neighborKey)) continue;
+                    
+                    const cost = getCost(dynamicGrid[neighbor.y][neighbor.x]);
+                    const tentativeGScore = (gScore[currentKey] || 0) + cost;
+
+                    if (tentativeGScore < (gScore[neighborKey] || Infinity)) {
+                        cameFrom[neighborKey] = current;
+                        gScore[neighborKey] = tentativeGScore;
+                        fScore[neighborKey] = gScore[neighborKey] + heuristic(neighbor, end);
+                        
+                        if (!openSet.some(node => node.x === neighbor.x && node.y === neighbor.y)) {
+                            openSet.push(neighbor);
+                        }
                     }
                 }
             }
-            for (let y = 4; y < MAP_DIMENSIONS.height; y += 4) {
-                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
-                    if (grid[y][x] === TILE_TYPES.OBSTACLE) grid[y][x] = TILE_TYPES.SMALL_ROAD;
-                }
-            }
-            for (let i = 0; i < MAP_DIMENSIONS.width - 5; i++) {
-                const x = i, y = Math.floor((i * MAP_DIMENSIONS.height) / MAP_DIMENSIONS.width);
-                if (y + 1 < MAP_DIMENSIONS.height) {
-                    grid[y][x] = TILE_TYPES.BROADWAY;
-                    grid[y + 1][x] = TILE_TYPES.BROADWAY;
-                }
-            }
-            const parkStartX = Math.floor(MAP_DIMENSIONS.width * 0.4), parkEndX = Math.floor(MAP_DIMENSIONS.width * 0.65);
-            const parkStartY = Math.floor(MAP_DIMENSIONS.height * 0.15), parkEndY = Math.floor(MAP_DIMENSIONS.height * 0.45);
-            for (let y = parkStartY; y < parkEndY; y++) {
-                for (let x = parkStartX; x < parkEndX; x++) {
-                    grid[y][x] = TILE_TYPES.OBSTACLE;
-                }
-            }
-            placeStartAndEnd();
-            updateTrafficAndDraw();
+            return [];
+        }
+        
+        function heuristic(a, b) {
+            return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
         }
 
-        function placeStartAndEnd() {
-            const roadPositions = [];
-            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
-                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
-                    if (grid[y][x] !== TILE_TYPES.OBSTACLE) roadPositions.push({ x, y });
-                }
-            }
-            if (roadPositions.length < 2) return;
-            let attempts = 0;
-            do {
-                startPos = roadPositions[Math.floor(Math.random() * roadPositions.length)];
-                endPos = roadPositions[Math.floor(Math.random() * roadPositions.length)];
-                attempts++;
-            } while (attempts < 50 && (Math.abs(startPos.x - endPos.x) + Math.abs(startPos.y - endPos.y) < 20));
-        }
-
-        function addTraffic(baseGrid, hour) {
-            let newTrafficGrid = baseGrid.map(row => [...row]);
-            let trafficIntensity = 0.1, constructionActive = false;
-            if (hour >= 7 && hour <= 9) trafficIntensity = 0.4;
-            else if (hour >= 17 && hour <= 19) trafficIntensity = 0.45;
-            else if (hour >= 12 && hour <= 13) trafficIntensity = 0.25;
-            else if (hour >= 2 && hour <= 5) constructionActive = true;
-
-            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
-                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
-                    const roadType = baseGrid[y][x];
-                    if (roadType === TILE_TYPES.LARGE_ROAD || roadType === TILE_TYPES.BROADWAY) {
-                        if (constructionActive && Math.random() < 0.05) newTrafficGrid[y][x] = 'ROAD_CLOSURE';
-                        else if (Math.random() < trafficIntensity) newTrafficGrid[y][x] = 'TRAFFIC_JAM';
+        function getNeighbors(node, dynamicGrid, vehicle) {
+            const neighbors = [];
+            const dirs = [{x:0, y:1}, {x:0, y:-1}, {x:1, y:0}, {x:-1, y:0}];
+            for(const dir of dirs) {
+                const nextX = node.x + dir.x;
+                const nextY = node.y + dir.y;
+                if(nextX >= 0 && nextX < MAP_DIMENSIONS.width && nextY >= 0 && nextY < MAP_DIMENSIONS.height) {
+                    const tileType = dynamicGrid[nextY][nextX];
+                    
+                    if (tileType !== TILE_TYPES.OBSTACLE && tileType !== 'ROAD_CLOSURE') {
+                        if (vehicle.allowed_roads.includes(tileType) || tileType === 'TRAFFIC_JAM') {
+                            neighbors.push({x: nextX, y: nextY});
+                        }
                     }
                 }
             }
-            return newTrafficGrid;
+            return neighbors;
         }
 
-        function updateTrafficAndDraw() {
-            trafficGrid = addTraffic(grid, currentHour);
-            drawMap(trafficGrid);
+        function getCost(tileType) {
+            switch(tileType) {
+                case 'TRAFFIC_JAM': return 8;
+                case 'ROAD_CLOSURE': return Infinity;
+                case TILE_TYPES.LARGE_ROAD: return 1;
+                case TILE_TYPES.DIAGONAL: return 2;
+                case TILE_TYPES.SMALL_ROAD: return 3;
+                default: return 1;
+            }
         }
 
+        function reconstructPath(cameFrom, current) {
+            const totalPath = [current];
+            let currentKey = `${current.x},${current.y}`;
+            while (cameFrom[currentKey]) {
+                current = cameFrom[currentKey];
+                currentKey = `${current.x},${current.y}`;
+                totalPath.unshift(current);
+            }
+            return totalPath;
+        }
+
+        function calculatePathCost(path, dynamicGrid) {
+            let totalCost = 0;
+            for (let pos of path) {
+                totalCost += getCost(dynamicGrid[pos.y][pos.x]);
+            }
+            return totalCost;
+        }
+
+        // --- VISUALIZATION ---
         function drawMap(dynamicGrid, path = []) {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
+
             for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
                 for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
                     let color;
@@ -333,7 +611,7 @@
                         case TILE_TYPES.OBSTACLE: color = COLORS.OBSTACLE; break;
                         case TILE_TYPES.SMALL_ROAD: color = COLORS.SMALL_ROAD; break;
                         case TILE_TYPES.LARGE_ROAD: color = COLORS.LARGE_ROAD; break;
-                        case TILE_TYPES.BROADWAY: color = '#a78bfa'; break;
+                        case TILE_TYPES.DIAGONAL: color = '#a78bfa'; break;
                         case 'TRAFFIC_JAM': color = COLORS.TRAFFIC_JAM; break;
                         case 'ROAD_CLOSURE': color = COLORS.ROAD_CLOSURE; break;
                         default: color = COLORS.OBSTACLE;
@@ -342,10 +620,14 @@
                     ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
                 }
             }
+            
             if (path.length > 0) {
                 ctx.fillStyle = COLORS.PATH;
-                path.forEach(p => ctx.fillRect(p.x * tileSize, p.y * tileSize, tileSize, tileSize));
+                path.forEach(p => {
+                    ctx.fillRect(p.x * tileSize, p.y * tileSize, tileSize, tileSize);
+                });
             }
+
             if (startPos) {
                 ctx.fillStyle = COLORS.START;
                 ctx.fillRect(startPos.x * tileSize, startPos.y * tileSize, tileSize, tileSize);
@@ -358,7 +640,7 @@
 
         function animateVehicle(path) {
             if (path.length === 0) {
-                statusEl.textContent = '⚠️ HRM could not find a route!';
+                statusEl.textContent = '⚠️ No route found!';
                 return;
             }
             isAnimating = true;
@@ -366,7 +648,8 @@
             function animationLoop() {
                 if (step >= path.length) {
                     isAnimating = false;
-                    statusEl.textContent = `🎯 Arrived! Route found with ${path.length} steps.`;
+                    const cost = calculatePathCost(path, trafficGrid);
+                    statusEl.textContent = `🎯 Route complete! ${path.length} steps, cost: ${cost.toFixed(1)}`;
                     return;
                 }
                 drawMap(trafficGrid, path.slice(0, step + 1));
@@ -380,24 +663,147 @@
             }
             animationLoop();
         }
-        
-        // --- Event Handlers & Initialization ---
+
+        // --- EVENT HANDLERS ---
         async function handlePredict() {
             if (isAnimating) return;
             const inputSequence = gridToHRMSequence(grid, trafficGrid, startPos, endPos);
-            const predictedPath = await getHRMPrediction(inputSequence);
-            animateVehicle(predictedPath);
+            lastHrmPrediction = await getHRMPrediction(inputSequence);
+            if (lastHrmPrediction.length > 0) {
+                animateVehicle(lastHrmPrediction);
+                updateResults();
+            }
+        }
+
+        async function handleCompareOracle() {
+            if (isAnimating) return;
+            
+            statusEl.textContent = '⚖️ Computing A* oracle and comparing...';
+            compareOracleBtn.disabled = true;
+            
+            // Get HRM prediction if not already done
+            if (!lastHrmPrediction) {
+                const inputSequence = gridToHRMSequence(grid, trafficGrid, startPos, endPos);
+                lastHrmPrediction = await getHRMPrediction(inputSequence);
+            }
+            
+            // Get A* oracle solution
+            const vehicle = VEHICLE_CONFIG[currentDifficulty];
+            lastOraclePath = solvePathAStar(trafficGrid, startPos, endPos, vehicle);
+            
+            compareOracleBtn.disabled = false;
+            updateResults();
+            
+            if (lastOraclePath.length > 0) {
+                animateVehicle(lastOraclePath);
+            } else {
+                statusEl.textContent = '❌ No valid path exists for this scenario';
+            }
+        }
+
+        function updateResults() {
+            if (!lastHrmPrediction && !lastOraclePath) return;
+            
+            resultsPanel.classList.remove('hidden');
+            
+            // HRM results
+            if (lastHrmPrediction) {
+                const hrmCost = lastHrmPrediction.length > 0 ? calculatePathCost(lastHrmPrediction, trafficGrid) : 'N/A';
+                hrmResult.innerHTML = `
+                    <div>Steps: ${lastHrmPrediction.length}</div>
+                    <div>Cost: ${hrmCost !== 'N/A' ? hrmCost.toFixed(1) : 'N/A'}</div>
+                `;
+            } else {
+                hrmResult.innerHTML = '<div>Not computed</div>';
+            }
+            
+            // Oracle results
+            if (lastOraclePath) {
+                const oracleCost = lastOraclePath.length > 0 ? calculatePathCost(lastOraclePath, trafficGrid) : 'N/A';
+                oracleResult.innerHTML = `
+                    <div>Steps: ${lastOraclePath.length}</div>
+                    <div>Cost: ${oracleCost !== 'N/A' ? oracleCost.toFixed(1) : 'N/A'}</div>
+                `;
+            } else {
+                oracleResult.innerHTML = '<div>Not computed</div>';
+            }
+            
+            // Comparison
+            if (lastHrmPrediction && lastOraclePath) {
+                const hrmValid = lastHrmPrediction.length > 0;
+                const oracleValid = lastOraclePath.length > 0;
+                
+                if (!hrmValid && !oracleValid) {
+                    matchResult.innerHTML = '<div class="text-gray-600">Both failed</div>';
+                } else if (!hrmValid) {
+                    matchResult.innerHTML = '<div class="text-red-600">HRM failed</div>';
+                } else if (!oracleValid) {
+                    matchResult.innerHTML = '<div class="text-orange-600">No valid path</div>';
+                } else {
+                    const hrmCost = calculatePathCost(lastHrmPrediction, trafficGrid);
+                    const oracleCost = calculatePathCost(lastOraclePath, trafficGrid);
+                    const ratio = hrmCost / oracleCost;
+                    
+                    if (ratio <= 1.05) {
+                        matchResult.innerHTML = '<div class="text-green-600">✅ Optimal</div>';
+                    } else if (ratio <= 1.2) {
+                        matchResult.innerHTML = '<div class="text-yellow-600">⚠️ Near-optimal</div>';
+                    } else {
+                        matchResult.innerHTML = '<div class="text-red-600">❌ Suboptimal</div>';
+                    }
+                }
+            }
+        }
+
+        async function testModelConnection() {
+            testConnectionBtn.disabled = true;
+            modelStatusEl.textContent = 'Testing connection...';
+            
+            try {
+                const response = await fetch('http://127.0.0.1:5000/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ inputs: new Array(1600).fill(0) })
+                });
+                
+                if (response.ok) {
+                    modelStatusEl.textContent = '✅ HRM server connected and ready';
+                    modelStatusEl.className = 'text-sm text-green-700';
+                } else {
+                    throw new Error('Server responded with error');
+                }
+            } catch (error) {
+                modelStatusEl.textContent = '❌ Cannot connect to HRM server at http://127.0.0.1:5000';
+                modelStatusEl.className = 'text-sm text-red-700';
+            }
+            
+            testConnectionBtn.disabled = false;
         }
         
         function handleDifficultyChange(e) {
             if (e.target.tagName !== 'BUTTON') return;
-            currentDifficulty = e.target.dataset.difficulty;
+            
+            const newDifficulty = e.target.dataset.difficulty;
+            currentDifficulty = newDifficulty;
+            
             Array.from(difficultyButtons.children).forEach(btn => {
                 btn.classList.remove('bg-blue-500', 'text-white');
                 btn.classList.add('bg-gray-200', 'text-gray-800');
             });
+            
+            e.target.classList.remove('bg-gray-200', 'text-gray-800');
             e.target.classList.add('bg-blue-500', 'text-white');
-            statusEl.textContent = `Selected: ${VEHICLE_CONFIG[currentDifficulty].name}.`;
+            
+            statusEl.textContent = `Selected: ${VEHICLE_CONFIG[currentDifficulty].name}. Generate scenario or get HRM prediction.`;
+            
+            // Reset predictions when vehicle changes
+            lastHrmPrediction = null;
+            lastOraclePath = null;
+            resultsPanel.classList.add('hidden');
+            
+            if (grid.length > 0 && !isAnimating) {
+                updateTrafficAndDraw();
+            }
         }
 
         function resizeCanvas() {
@@ -413,21 +819,28 @@
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
             predictBtn.addEventListener('click', handlePredict);
+            compareOracleBtn.addEventListener('click', handleCompareOracle);
+            testConnectionBtn.addEventListener('click', testModelConnection);
             generateMapBtn.addEventListener('click', () => {
-                if(isAnimating) return;
+                if (isAnimating) return;
+                lastHrmPrediction = null;
+                lastOraclePath = null;
                 generateMap();
-                statusEl.textContent = 'New map generated. Ready for HRM prediction.';
+                statusEl.textContent = 'New scenario generated. Ready for HRM evaluation.';
             });
             difficultyButtons.addEventListener('click', handleDifficultyChange);
             timeSelector.addEventListener('change', () => {
                 currentHour = parseInt(timeSelector.value);
-                if(grid.length > 0 && !isAnimating) updateTrafficAndDraw();
+                lastHrmPrediction = null;
+                lastOraclePath = null;
+                if (grid.length > 0 && !isAnimating) updateTrafficAndDraw();
             });
             
             // Set initial active button
             difficultyButtons.querySelector(`[data-difficulty="${currentDifficulty}"]`).classList.add('bg-blue-500', 'text-white');
             generateMap();
-            statusEl.textContent = 'Ready for HRM evaluation. Click "Get HRM Prediction".';
+            testModelConnection();
+            statusEl.textContent = 'Dataset-compatible evaluation ready. Generate scenario and test HRM.';
         }
 
         document.addEventListener('DOMContentLoaded', init);
