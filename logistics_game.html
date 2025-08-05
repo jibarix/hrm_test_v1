@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>City Logistics Simulator - HRM Paper Compatible</title>
+    <title>City Logistics Simulator - HRM Paper Compatible (FIXED)</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -21,13 +21,22 @@
     <div class="w-full max-w-6xl mx-auto bg-white rounded-xl shadow-lg p-4 sm:p-6">
         <div class="text-center mb-4">
             <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">City Logistics Simulator</h1>
-            <p class="text-gray-500 mt-1">🧠 HRM Paper-Compatible Dataset Generator (960 Train + 400 Test)</p>
+            <p class="text-gray-500 mt-1">HRM Paper-Compatible Dataset Generator (960 Train + 400 Test) - FIXED VERSION</p>
         </div>
 
         <!-- Dataset Generation Controls -->
         <div class="flex flex-col gap-4 mb-4">
+            <div class="bg-green-50 border border-green-200 rounded-lg p-4">
+                <h3 class="font-semibold text-green-800 mb-2">FIXED: Correct Dataset Label Generation</h3>
+                <div class="text-sm text-green-700 space-y-1">
+                    <div><strong>Fixed:</strong> Labels now contain full grid state (obstacles, roads, traffic)</div>
+                    <div><strong>Fixed:</strong> PATH tokens only mark optimal route positions</div>
+                    <div><strong>Result:</strong> Model will learn proper pathfinding, not just "output PATH everywhere"</div>
+                </div>
+            </div>
+            
             <div class="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h3 class="font-semibold text-blue-800 mb-2">📊 Paper-Compatible Dataset Structure</h3>
+                <h3 class="font-semibold text-blue-800 mb-2">Paper-Compatible Dataset Structure</h3>
                 <div class="text-sm text-blue-700 space-y-1">
                     <div><strong>Train:</strong> 240 base scenarios × 4 vehicles = 960 examples</div>
                     <div><strong>Test:</strong> 100 base scenarios × 4 vehicles = 400 examples</div>
@@ -67,7 +76,7 @@
                     🏙️ Find Route in City
                 </button>
                 <button id="generate-paper-dataset-btn" class="btn bg-purple-500 text-white font-bold px-6 py-2 rounded-lg shadow-lg ml-2">
-                    📊 Generate Paper Dataset
+                    📊 Generate Fixed Paper Dataset
                 </button>
                 <button id="download-data-btn" class="btn bg-blue-500 text-white font-bold px-4 py-2 rounded-lg shadow-lg ml-2" disabled>
                     📥 Download HRM Data
@@ -138,9 +147,10 @@
             </div>
             <div class="mt-3 pt-3 border-t border-gray-200">
                 <div class="text-xs text-gray-600 space-y-1">
-                    <div><span class="font-medium text-purple-600">🧠 HRM Training:</span> Each base scenario generates 4 vehicle variants (bike/car/van/truck)</div>
-                    <div><span class="font-medium text-blue-600">📊 Paper Method:</span> Separate base scenarios for train/test (no scenario overlap)</div>
-                    <div><span class="font-medium text-green-600">🎯 Output:</span> 960 train + 400 test examples with systematic augmentation</div>
+                    <div><span class="font-medium text-purple-600">HRM Training:</span> Each base scenario generates 4 vehicle variants (bike/car/van/truck)</div>
+                    <div><span class="font-medium text-blue-600">Paper Method:</span> Separate base scenarios for train/test (no scenario overlap)</div>
+                    <div><span class="font-medium text-green-600">Output:</span> 960 train + 400 test examples with systematic augmentation</div>
+                    <div><span class="font-medium text-red-600">FIXED:</span> Labels now contain full grid state, not just PATH tokens</div>
                 </div>
             </div>
         </div>
@@ -294,9 +304,9 @@
                 return null; // Still failed - this should be very rare
             }
             
-            // Convert to HRM format
+            // Convert to HRM format - FIXED VERSION
             const inputSequence = gridToHRMSequence(baseScenario.baseGrid, trafficGrid, baseScenario.startPos, baseScenario.endPos, []);
-            const outputSequence = pathToHRMSequence(baseScenario.baseGrid, optimalPath);
+            const outputSequence = pathToHRMSequence(baseScenario.baseGrid, trafficGrid, baseScenario.startPos, baseScenario.endPos, optimalPath);
             
             return {
                 baseScenarioId: baseScenario.id,
@@ -479,14 +489,14 @@
             const trainCount = paperDataset.train.inputs.length;
             const testCount = paperDataset.test.inputs.length;
             
-            statusEl.textContent = `✅ Generated Paper Dataset: ${trainCount} train + ${testCount} test examples (${processedBaseScenarios} base scenarios, ${failedVariants} failed variants)`;
+            statusEl.textContent = `✅ Generated FIXED Paper Dataset: ${trainCount} train + ${testCount} test examples (${processedBaseScenarios} base scenarios, ${failedVariants} failed variants)`;
             
-            console.log(`📊 Paper Dataset Summary:
+            console.log(`📊 FIXED Paper Dataset Summary:
 Train: ${trainCount} examples from ${trainBaseCount} base scenarios
 Test: ${testCount} examples from ${testBaseCount} base scenarios  
 Total: ${totalExampleCount} examples
 Failed variants: ${failedVariants}
-Systematic augmentation: Each base scenario → up to 4 vehicle variants`);
+FIXED: Labels now contain full grid state with PATH markers`);
         }
 
         function updateProgress(processed, total, trainDone, trainTotal, testDone, testTotal, examples) {
@@ -693,7 +703,7 @@ Systematic augmentation: Each base scenario → up to 4 vehicle variants`);
                     task: "city_logistics_routing",
                     map_dimensions: MAP_DIMENSIONS,
                     token_mapping: HRM_TOKEN_MAP,
-                    generation_method: "paper_compatible",
+                    generation_method: "paper_compatible_FIXED",
                     split: split
                 });
                 
@@ -721,14 +731,15 @@ Systematic augmentation: Each base scenario → up to 4 vehicle variants`);
                 
                 // Dataset summary
                 const summary = {
-                    method: "paper_compatible_generation",
+                    method: "paper_compatible_generation_FIXED",
                     train_examples: paperDataset.train.inputs.length,
                     test_examples: paperDataset.test.inputs.length,
                     base_scenarios_train: 240,
                     base_scenarios_test: 100,
                     systematic_augmentation: "4_vehicle_variants_per_base_scenario",
                     vehicles: ["easy", "normal", "hard", "expert"],
-                    no_overlap: "train_test_base_scenarios_completely_separate"
+                    no_overlap: "train_test_base_scenarios_completely_separate",
+                    fix_applied: "Labels now contain full grid state with PATH markers, not just PATH tokens"
                 };
                 zip.file('city_routing_paper_dataset_summary.json', JSON.stringify(summary, null, 2));
                 
@@ -737,14 +748,14 @@ Systematic augmentation: Each base scenario → up to 4 vehicle variants`);
                 const url = URL.createObjectURL(content);
                 const a = document.createElement('a');
                 a.href = url;
-                a.download = 'city_logistics_hrm_dataset.zip';
+                a.download = 'city_logistics_hrm_dataset_FIXED.zip';
                 document.body.appendChild(a);
                 a.click();
                 document.body.removeChild(a);
                 URL.revokeObjectURL(url);
                 
-                console.log(`📦 Downloaded ZIP file with 18 files for HRM paper-compatible dataset`);
-                alert(`Downloaded HRM Paper Dataset ZIP!\n\n✅ Train: ${paperDataset.train.inputs.length} examples\n✅ Test: ${paperDataset.test.inputs.length} examples\n✅ 18 JSON files in ZIP ready for conversion\n\nNext: Extract ZIP and convert to .npy format for HRM training`);
+                console.log(`📦 Downloaded FIXED ZIP file with 18 files for HRM paper-compatible dataset`);
+                alert(`Downloaded FIXED HRM Paper Dataset ZIP!\n\n✅ Train: ${paperDataset.train.inputs.length} examples\n✅ Test: ${paperDataset.test.inputs.length} examples\n✅ 18 JSON files in ZIP ready for conversion\n✅ FIXED: Labels contain full grid state\n\nNext: Extract ZIP and convert to .npy format for HRM training`);
                 
             } catch (error) {
                 console.error('Error creating ZIP:', error);
@@ -755,7 +766,67 @@ Systematic augmentation: Each base scenario → up to 4 vehicle variants`);
             }
         }
 
-        // --- Core Functions (keep existing implementations) ---
+        // --- FIXED: Core Functions for HRM Dataset Generation ---
+        
+        function gridToHRMSequence(baseGrid, trafficGrid, startPos, endPos, optimalPath) {
+            const pathSet = new Set(optimalPath.map(p => `${p.x},${p.y}`));
+            const sequence = new Array(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height);
+            
+            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
+                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
+                    const idx = y * MAP_DIMENSIONS.width + x;
+                    const coord = `${x},${y}`;
+                    
+                    if (startPos && startPos.x === x && startPos.y === y) {
+                        sequence[idx] = HRM_TOKEN_MAP.START;
+                    } else if (endPos && endPos.x === x && endPos.y === y) {
+                        sequence[idx] = HRM_TOKEN_MAP.END;
+                    } else if (pathSet.has(coord)) {
+                        sequence[idx] = HRM_TOKEN_MAP.PATH;
+                    } else if (trafficGrid[y][x] === 'TRAFFIC_JAM') {
+                        sequence[idx] = HRM_TOKEN_MAP.TRAFFIC_JAM;
+                    } else if (trafficGrid[y][x] === 'ROAD_CLOSURE') {
+                        sequence[idx] = HRM_TOKEN_MAP.ROAD_CLOSURE;
+                    } else {
+                        switch (baseGrid[y][x]) {
+                            case TILE_TYPES.OBSTACLE: sequence[idx] = HRM_TOKEN_MAP.OBSTACLE; break;
+                            case TILE_TYPES.SMALL_ROAD: sequence[idx] = HRM_TOKEN_MAP.SMALL_ROAD; break;
+                            case TILE_TYPES.LARGE_ROAD: sequence[idx] = HRM_TOKEN_MAP.LARGE_ROAD; break;
+                            case TILE_TYPES.DIAGONAL: sequence[idx] = HRM_TOKEN_MAP.DIAGONAL; break;
+                            default: sequence[idx] = HRM_TOKEN_MAP.OBSTACLE;
+                        }
+                    }
+                }
+            }
+            
+            return sequence;
+        }
+
+        // FIXED: This is the key function that was broken before
+        function pathToHRMSequence(baseGrid, trafficGrid, startPos, endPos, path) {
+            // CRITICAL FIX: Start with the full input state (same as input)
+            const sequence = gridToHRMSequence(baseGrid, trafficGrid, startPos, endPos, []);
+            
+            // Validate path parameter
+            if (!path || !Array.isArray(path) || path.length === 0) {
+                console.warn("Invalid or empty path provided to pathToHRMSequence:", path);
+                return sequence; // Return input state without path markers
+            }
+            
+            // THEN mark path positions with PATH tokens  
+            for (const pos of path) {
+                if (pos && typeof pos.x === 'number' && typeof pos.y === 'number') {
+                    const idx = pos.y * MAP_DIMENSIONS.width + pos.x;
+                    if (idx >= 0 && idx < sequence.length) {
+                        sequence[idx] = HRM_TOKEN_MAP.PATH;
+                    }
+                }
+            }
+            
+            return sequence;
+        }
+
+        // --- Rest of functions remain the same ---
         function generateMap() {
             grid = Array(MAP_DIMENSIONS.height).fill(null).map(() => Array(MAP_DIMENSIONS.width).fill(TILE_TYPES.OBSTACLE));
 
@@ -819,6 +890,7 @@ Systematic augmentation: Each base scenario → up to 4 vehicle variants`);
             }
 
             placeStartAndEnd();
+            updateTrafficAndDraw();
         }
 
         function placeStartAndEnd() {
@@ -904,49 +976,9 @@ Systematic augmentation: Each base scenario → up to 4 vehicle variants`);
             return trafficGrid;
         }
 
-        function gridToHRMSequence(baseGrid, trafficGrid, startPos, endPos, optimalPath) {
-            const pathSet = new Set(optimalPath.map(p => `${p.x},${p.y}`));
-            const sequence = new Array(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height);
-            
-            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
-                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
-                    const idx = y * MAP_DIMENSIONS.width + x;
-                    const coord = `${x},${y}`;
-                    
-                    if (startPos && startPos.x === x && startPos.y === y) {
-                        sequence[idx] = HRM_TOKEN_MAP.START;
-                    } else if (endPos && endPos.x === x && endPos.y === y) {
-                        sequence[idx] = HRM_TOKEN_MAP.END;
-                    } else if (pathSet.has(coord)) {
-                        sequence[idx] = HRM_TOKEN_MAP.PATH;
-                    } else if (trafficGrid[y][x] === 'TRAFFIC_JAM') {
-                        sequence[idx] = HRM_TOKEN_MAP.TRAFFIC_JAM;
-                    } else if (trafficGrid[y][x] === 'ROAD_CLOSURE') {
-                        sequence[idx] = HRM_TOKEN_MAP.ROAD_CLOSURE;
-                    } else {
-                        switch (baseGrid[y][x]) {
-                            case TILE_TYPES.OBSTACLE: sequence[idx] = HRM_TOKEN_MAP.OBSTACLE; break;
-                            case TILE_TYPES.SMALL_ROAD: sequence[idx] = HRM_TOKEN_MAP.SMALL_ROAD; break;
-                            case TILE_TYPES.LARGE_ROAD: sequence[idx] = HRM_TOKEN_MAP.LARGE_ROAD; break;
-                            case TILE_TYPES.DIAGONAL: sequence[idx] = HRM_TOKEN_MAP.DIAGONAL; break;
-                            default: sequence[idx] = HRM_TOKEN_MAP.OBSTACLE;
-                        }
-                    }
-                }
-            }
-            
-            return sequence;
-        }
-
-        function pathToHRMSequence(baseGrid, path) {
-            const sequence = new Array(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height).fill(HRM_TOKEN_MAP.PAD);
-            
-            for (const pos of path) {
-                const idx = pos.y * MAP_DIMENSIONS.width + pos.x;
-                sequence[idx] = HRM_TOKEN_MAP.PATH;
-            }
-            
-            return sequence;
+        function updateTrafficAndDraw() {
+            const trafficGrid = addTraffic(grid, currentHour);
+            drawMap(trafficGrid);
         }
 
         function drawMap(dynamicGrid, path = []) {
@@ -1026,7 +1058,7 @@ Systematic augmentation: Each base scenario → up to 4 vehicle variants`);
             animationLoop();
         }
 
-        // --- A* Pathfinding (keep existing implementation) ---
+        // --- A* Pathfinding ---
         function solvePath(dynamicGrid, start, end, vehicle) {
             const openSet = [start];
             const cameFrom = {};
@@ -1187,8 +1219,7 @@ Systematic augmentation: Each base scenario → up to 4 vehicle variants`);
             statusEl.textContent = `Selected: ${VEHICLE_CONFIG[currentDifficulty].name}. Click "Find Route in City" to see the optimal path.`;
             
             if (grid.length > 0 && !isAnimating) {
-                const dynamicGrid = addTraffic(grid, currentHour);
-                drawMap(dynamicGrid);
+                updateTrafficAndDraw();
             }
         }
 
@@ -1201,8 +1232,7 @@ Systematic augmentation: Each base scenario → up to 4 vehicle variants`);
             tileSize = containerSize / MAP_DIMENSIONS.width;
             
             if (grid.length > 0 && !isAnimating) {
-                const dynamicGrid = addTraffic(grid);
-                drawMap(dynamicGrid);
+                updateTrafficAndDraw();
             }
         }
 
@@ -1229,12 +1259,11 @@ Systematic augmentation: Each base scenario → up to 4 vehicle variants`);
                 timeSelector.addEventListener('change', () => {
                     currentHour = parseInt(timeSelector.value);
                     if (grid.length > 0 && !isAnimating) {
-                        const dynamicGrid = addTraffic(grid, currentHour);
-                        drawMap(dynamicGrid);
+                        updateTrafficAndDraw();
                     }
                 });
                 
-                statusEl.textContent = `🧠 Ready for HRM Paper Dataset! Generate 960 train + 400 test examples with systematic vehicle variants.`;
+                statusEl.textContent = `FIXED HRM Paper Dataset Generator Ready! Now generates labels with full grid state + PATH markers.`;
                 
             } catch (error) {
                 console.error('Initialization error:', error);
