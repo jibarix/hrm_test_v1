@@ -4,6 +4,11 @@ Batch Size Compatible Inference Test
 Test HRM with the correct batch size that matches training
 """
 
+import sys
+import os
+# Add parent directory to path for imports
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import yaml
 import torch
 import numpy as np

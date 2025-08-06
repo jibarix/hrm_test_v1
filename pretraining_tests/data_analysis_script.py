@@ -2,7 +2,7 @@
 """
 HRM Paper-Compatible Dataset Quality Analysis
 Validates City Logistics dataset generated using paper-compatible methodology.
-Updated for generic city (non-NYC) dataset.
+Updated for generic city dataset.
 """
 
 import numpy as np

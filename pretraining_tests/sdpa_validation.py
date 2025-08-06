@@ -116,7 +116,7 @@ def check_dependencies():
     return True
 
 if __name__ == "__main__":
-    print("🗽 NYC Logistics & Routing HRM - SDPA Validation")
+    print("City Logistics & Routing HRM - SDPA Validation")
     print("=" * 50)
     
     deps_ok = check_dependencies()
