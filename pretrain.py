@@ -125,7 +125,7 @@ def create_model(config: PretrainConfig, train_metadata: PuzzleDatasetMetadata, 
         model: nn.Module = model_cls(model_cfg)
         model = loss_head_cls(model, **config.arch.loss.__pydantic_extra__)  # type: ignore
         if "DISABLE_COMPILE" not in os.environ:
-            model = torch.compile(model, backend="inductor", mode="max-autotune", dynamic=False)  # type: ignore // modified from: model = torch.compile(model, dynamic=False)
+            model = torch.compile(model, backend="aot_eager", dynamic=False)  # type: ignore // modified from: model = torch.compile(model, dynamic=False)
         # Broadcast parameters from rank 0
         if world_size > 1:
             with torch.no_grad():

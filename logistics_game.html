@@ -163,7 +163,7 @@
 
     <script>
         // --- Configuration ---
-        const MAP_DIMENSIONS = { width: 40, height: 40 };
+        const MAP_DIMENSIONS = { width: 30, height: 30 };
 
         const COLORS = {
             OBSTACLE: '#4a5568',    // Dark Gray
@@ -365,8 +365,8 @@
 
         // --- Paper-Compatible Dataset Generation ---
         async function generatePaperCompatibleDataset() {
-            const trainBaseCount = 240;  // 240 × 4 = 960 train examples
-            const testBaseCount = 100;   // 100 × 4 = 400 test examples
+            const trainBaseCount = 150;
+            const testBaseCount = 100;
             const vehicleTypes = ['easy', 'normal', 'hard', 'expert'];
             
             paperDataset = {

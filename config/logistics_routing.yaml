@@ -11,7 +11,7 @@ hydra:
 data_path: data/city-logistics-1k
 
 # Hyperparams - Training
-global_batch_size: 32  # Fixed for RTX 3070 Ti memory
+global_batch_size: 64  # Fixed for RTX 3070 Ti memory
 
 epochs: 100
 eval_interval: 10

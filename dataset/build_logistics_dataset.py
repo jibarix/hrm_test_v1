@@ -93,8 +93,8 @@ def validate_paper_methodology(data: dict, strict: bool = True):
         train_count = len(data['train_inputs'])
         test_count = len(data['test_inputs'])
         
-        expected_train = 960  # 240 base × 4 vehicles
-        expected_test = 400   # 100 base × 4 vehicles
+        expected_train = 600  
+        expected_test = 400   
         
         if train_count != expected_train:
             issues.append(f"Train count mismatch: {train_count} vs expected {expected_train}")
