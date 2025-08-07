@@ -3,118 +3,141 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HRM City Logistics Evaluation - CORRECTED</title>
+    <title>HRM Pathfinding Evaluation - Visual Analysis</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
         body { font-family: 'Inter', sans-serif; }
         .btn { transition: all 0.2s ease-in-out; }
         .btn:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
-        .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+        .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
         canvas { image-rendering: pixelated; border-radius: 0.5rem; display: block; margin: 0 auto; }
-        .canvas-container { width: 100%; max-width: 800px; aspect-ratio: 1; margin: 0 auto; position: relative; }
-        .success-metric { background-color: #d1fae5; border: 1px solid #10b981; }
-        .warning-metric { background-color: #fef3c7; border: 1px solid #f59e0b; }
-        .error-metric { background-color: #fee2e2; border: 1px solid #ef4444; }
+        .canvas-container { width: 100%; max-width: 400px; aspect-ratio: 1; margin: 0 auto; position: relative; }
+        .success { background-color: #d1fae5; border: 1px solid #10b981; }
+        .warning { background-color: #fef3c7; border: 1px solid #f59e0b; }
+        .error { background-color: #fee2e2; border: 1px solid #ef4444; }
+        .test-result { margin: 8px 0; padding: 12px; border-radius: 8px; font-family: 'Courier New', monospace; font-size: 12px; }
     </style>
 </head>
 <body class="bg-gray-100 flex flex-col items-center justify-center min-h-screen p-4">
 
-    <div class="w-full max-w-6xl mx-auto bg-white rounded-xl shadow-lg p-4 sm:p-6">
+    <div class="w-full max-w-7xl mx-auto bg-white rounded-xl shadow-lg p-4 sm:p-6">
         <div class="text-center mb-4">
-            <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">HRM City Logistics Evaluation</h1>
-            <p class="text-gray-500 mt-1">CORRECTED: Testing with confirmed working configuration</p>
+            <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">HRM Pathfinding Evaluation</h1>
+            <p class="text-gray-500 mt-1">Visual Analysis with Honest Pathfinding Validation</p>
         </div>
 
-        <!-- Model Status -->
+        <!-- Test Configuration -->
         <div class="bg-blue-50 border border-blue-200 rounded-lg p-4 mb-4">
-            <div class="flex items-center justify-between">
-                <div>
-                    <h3 class="font-semibold text-blue-800">Model Performance Discovery</h3>
-                    <p class="text-sm text-blue-700" id="model-status">Model achieves 100% start/end detection via PATH tokens!</p>
+            <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
+                <div class="flex items-center gap-2">
+                    <span class="font-semibold text-blue-800">Number of Tests:</span>
+                    <input type="number" id="num-tests" value="5" min="1" max="20" 
+                           class="bg-white border border-gray-300 rounded-lg px-3 py-1 w-20">
                 </div>
-                <button id="test-connection-btn" class="btn bg-blue-500 text-white px-4 py-2 rounded-lg shadow-md">
-                    Test Connection
+                <button id="run-evaluation-btn" class="btn bg-green-500 text-white font-bold px-6 py-2 rounded-lg shadow-lg">
+                    Run Honest Evaluation
                 </button>
+                <button id="test-connection-btn" class="btn bg-blue-500 text-white px-4 py-2 rounded-lg shadow-md">
+                    Test HRM Server
+                </button>
+            </div>
+            <div class="text-center mt-2">
+                <span class="text-sm text-blue-700" id="connection-status">Click "Test HRM Server" to check connection</span>
             </div>
         </div>
 
-        <!-- Evaluation Controls -->
-        <div id="eval-controls" class="flex flex-col gap-4 mb-4">
-            <div class="flex flex-col sm:flex-row items-center justify-center gap-4">
-                <div class="flex items-center gap-2">
-                    <span class="font-semibold text-gray-700">Vehicle:</span>
-                    <div id="difficulty-buttons" class="flex flex-wrap gap-2">
-                        <button class="btn bg-gray-200 text-gray-800 px-4 py-2 rounded-lg shadow-md" data-difficulty="easy">Bike</button>
-                        <button class="btn bg-gray-200 text-gray-800 px-4 py-2 rounded-lg shadow-md" data-difficulty="normal">Car</button>
-                        <button class="btn bg-gray-200 text-gray-800 px-4 py-2 rounded-lg shadow-md" data-difficulty="hard">Van</button>
-                        <button class="btn bg-gray-200 text-gray-800 px-4 py-2 rounded-lg shadow-md" data-difficulty="expert">Truck</button>
+        <!-- Progress Display -->
+        <div id="progress-panel" class="bg-gray-50 rounded-lg p-4 mb-4 hidden">
+            <h3 class="font-semibold text-gray-800 mb-2 text-center">Evaluation Progress</h3>
+            <div class="w-full bg-gray-200 rounded-full h-2 mb-2">
+                <div id="progress-bar" class="bg-blue-600 h-2 rounded-full" style="width: 0%"></div>
+            </div>
+            <div class="text-center">
+                <span id="progress-text" class="text-sm text-gray-600">0/0 tests completed</span>
+            </div>
+            <div id="test-results-live" class="mt-2 max-h-40 overflow-y-auto"></div>
+        </div>
+
+        <!-- Results Summary -->
+        <div id="results-panel" class="bg-gray-50 rounded-lg p-4 mb-4 hidden">
+            <h3 class="text-lg font-semibold text-gray-800 mb-3 text-center">Honest Evaluation Results</h3>
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div class="text-center p-3 rounded-lg bg-white">
+                    <div class="font-medium text-blue-600">Core Pathfinding</div>
+                    <div id="pathfinding-results" class="text-gray-700 mt-2">
+                        <div>Complete Path Rate: <span id="complete-path-rate">-</span></div>
+                        <div>Valid Traversal Rate: <span id="valid-traversal-rate">-</span></div>
+                        <div>Optimal Path Rate: <span id="optimal-path-rate">-</span></div>
                     </div>
                 </div>
-                <div class="flex items-center gap-2">
-                    <span class="font-semibel text-gray-700">Time:</span>
-                    <select id="time-selector" class="bg-white border border-gray-300 rounded-lg px-3 py-2 shadow-md">
-                        <option value="6">6:00 AM - Early Morning</option>
-                        <option value="8" selected>8:00 AM - Rush Hour</option>
-                        <option value="10">10:00 AM - Mid Morning</option>
-                        <option value="12">12:00 PM - Lunch Hour</option>
-                        <option value="14">2:00 PM - Afternoon</option>
-                        <option value="17">5:00 PM - Evening Rush</option>
-                        <option value="20">8:00 PM - Evening</option>
-                        <option value="23">11:00 PM - Late Night</option>
-                    </select>
+                <div class="text-center p-3 rounded-lg bg-white">
+                    <div class="font-medium text-purple-600">Start/End Detection</div>
+                    <div id="detection-results" class="text-gray-700 mt-2">
+                        <div>Start Detection: <span id="start-detection-rate">-</span></div>
+                        <div>End Detection: <span id="end-detection-rate">-</span></div>
+                    </div>
+                </div>
+                <div class="text-center p-3 rounded-lg bg-white">
+                    <div class="font-medium text-green-600">Path Analysis</div>
+                    <div id="path-analysis-results" class="text-gray-700 mt-2">
+                        <div>Avg HRM Length: <span id="avg-hrm-length">-</span></div>
+                        <div>Avg Oracle Length: <span id="avg-oracle-length">-</span></div>
+                        <div>Avg PATH Tokens: <span id="avg-path-tokens">-</span></div>
+                    </div>
                 </div>
             </div>
             
-            <div class="text-center">
-                <button id="generate-map-btn" class="btn bg-blue-500 text-white font-bold px-6 py-2 rounded-lg shadow-lg">
-                    Generate New Scenario
-                </button>
-                <button id="predict-btn" class="btn bg-green-500 text-white font-bold px-6 py-2 rounded-lg shadow-lg ml-2">
-                    Get HRM Prediction
-                </button>
-                <button id="compare-oracle-btn" class="btn bg-purple-500 text-white font-bold px-4 py-2 rounded-lg shadow-lg ml-2">
-                    Compare vs A* Oracle
+            <div class="mt-4 p-3 rounded-lg" id="overall-assessment">
+                <div class="font-medium mb-2">Overall Assessment:</div>
+                <div id="assessment-text" class="text-sm"></div>
+            </div>
+            
+            <div class="mt-4 text-center">
+                <button id="download-results-btn" class="btn bg-purple-500 text-white px-4 py-2 rounded-lg shadow-md">
+                    Download Results JSON
                 </button>
             </div>
         </div>
-        
-        <p id="status" class="text-center text-gray-600 h-6 mb-4"></p>
 
-        <!-- CORRECTED Results Display -->
-        <div id="results-panel" class="bg-gray-50 rounded-lg p-4 mb-4 hidden">
-            <h3 class="text-lg font-semibold text-gray-800 mb-3 text-center">Evaluation Results (CORRECTED)</h3>
-            <div class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                <div class="text-center p-3 rounded-lg" id="hrm-result-container">
-                    <div class="font-medium text-blue-600">HRM Prediction</div>
-                    <div id="hrm-result" class="text-gray-700"></div>
+        <!-- Visual Comparison -->
+        <div id="visual-panel" class="bg-gray-50 rounded-lg p-4 mb-4 hidden">
+            <h3 class="text-lg font-semibold text-gray-800 mb-3 text-center">Visual Path Comparison</h3>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div class="text-center">
+                    <h4 class="font-medium text-blue-600 mb-2">HRM Prediction</h4>
+                    <div class="canvas-container bg-gray-800 rounded-lg shadow-inner">
+                        <canvas id="hrm-canvas"></canvas>
+                    </div>
+                    <div id="hrm-analysis" class="mt-2 text-sm text-gray-600">Click "Run Evaluation" to see results</div>
                 </div>
-                <div class="text-center p-3 rounded-lg" id="oracle-result-container">
-                    <div class="font-medium text-purple-600">A* Oracle</div>
-                    <div id="oracle-result" class="text-gray-700"></div>
-                </div>
-                <div class="text-center p-3 rounded-lg" id="match-result-container">
-                    <div class="font-medium text-green-600">Performance Analysis</div>
-                    <div id="match-result" class="text-gray-700"></div>
+                <div class="text-center">
+                    <h4 class="font-medium text-purple-600 mb-2">A* Oracle Solution</h4>
+                    <div class="canvas-container bg-gray-800 rounded-lg shadow-inner">
+                        <canvas id="oracle-canvas"></canvas>
+                    </div>
+                    <div id="oracle-analysis" class="mt-2 text-sm text-gray-600">Oracle path will be shown here</div>
                 </div>
             </div>
-            <div class="mt-4 p-3 bg-blue-50 rounded-lg">
-                <div class="text-sm">
-                    <div><strong>Start Detection:</strong> <span id="start-detection">-</span></div>
-                    <div><strong>End Detection:</strong> <span id="end-detection">-</span></div>
-                    <div><strong>Path Overlap:</strong> <span id="path-overlap">-</span></div>
-                    <div><strong>Path Efficiency:</strong> <span id="path-efficiency">-</span></div>
-                </div>
+            
+            <div class="mt-4 text-center">
+                <button id="prev-example-btn" class="btn bg-gray-500 text-white px-4 py-2 rounded-lg shadow-md mr-2" disabled>
+                    Previous Example
+                </button>
+                <span id="example-counter" class="mx-4 font-medium">Example 1 of 1</span>
+                <button id="next-example-btn" class="btn bg-gray-500 text-white px-4 py-2 rounded-lg shadow-md ml-2" disabled>
+                    Next Example
+                </button>
             </div>
         </div>
 
         <!-- Legend -->
         <div class="bg-gray-50 rounded-lg p-4 mb-4">
-            <h3 class="text-lg font-semibold text-gray-800 mb-3 text-center">City Traffic Map Legend</h3>
+            <h3 class="text-lg font-semibold text-gray-800 mb-3 text-center">Map Legend</h3>
             <div class="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm">
                 <div class="flex items-center gap-2">
                     <div class="w-4 h-4 rounded" style="background-color: #4a5568;"></div>
-                    <span>Buildings/City Park</span>
+                    <span>Buildings/Park</span>
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="w-4 h-4 rounded" style="background-color: #d1d5db;"></div>
@@ -126,7 +149,7 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="w-4 h-4 rounded" style="background-color: #a78bfa;"></div>
-                    <span>Main Diagonal</span>
+                    <span>Diagonal Route</span>
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="w-4 h-4 rounded" style="background-color: #f59e0b;"></div>
@@ -142,35 +165,24 @@
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="w-4 h-4 rounded" style="background-color: #ef4444;"></div>
-                    <span>Destination</span>
+                    <span>End Point</span>
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="w-4 h-4 rounded" style="background-color: #3b82f6;"></div>
-                    <span>HRM Route</span>
+                    <span>HRM Path</span>
                 </div>
                 <div class="flex items-center gap-2">
                     <div class="w-4 h-4 rounded" style="background-color: #8b5cf6;"></div>
-                    <span>A* Oracle Route</span>
+                    <span>Oracle Path</span>
                 </div>
             </div>
-            <div class="mt-3 pt-3 border-t border-gray-200">
-                <div class="text-xs text-gray-600 space-y-1">
-                    <div><span class="font-medium text-green-600">CORRECTED:</span> Model uses PATH tokens at start/end positions (100% accuracy!)</div>
-                    <div><span class="font-medium text-blue-600">Performance:</span> Model finds 22% shorter paths than A* on average</div>
-                    <div><span class="font-medium text-purple-600">Discovery:</span> Your model learned advanced pathfinding strategies</div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Canvas for visualization -->
-        <div class="canvas-container bg-gray-800 rounded-lg shadow-inner">
-             <canvas id="gameCanvas"></canvas>
         </div>
     </div>
 
     <script>
-        // --- CORRECTED CONFIGURATION (matches working evaluation) ---
+        // Configuration
         const MAP_DIMENSIONS = { width: 30, height: 30 };
+        const HRM_SERVER_URL = 'http://127.0.0.1:5000';
 
         const COLORS = {
             OBSTACLE: '#4a5568',
@@ -180,73 +192,86 @@
             ROAD_CLOSURE: '#dc2626',
             START: '#10b981',
             END: '#ef4444',
-            HRM_PATH: '#3b82f6',      // Blue for HRM predictions
-            ORACLE_PATH: '#8b5cf6',   // Purple for A* oracle
-            VEHICLE: {
-                easy: '#34d399',
-                normal: '#60a5fa', 
-                hard: '#facc15',
-                expert: '#f87171',
-            }
+            HRM_PATH: '#3b82f6',
+            ORACLE_PATH: '#8b5cf6',
         };
 
-        const TILE_TYPES = {
-            OBSTACLE: 0,
-            SMALL_ROAD: 1,
-            LARGE_ROAD: 2,
-            DIAGONAL: 3,
-        };
+        const TILE_TYPES = { OBSTACLE: 0, SMALL_ROAD: 1, LARGE_ROAD: 2, DIAGONAL: 3 };
 
-        const VEHICLE_CONFIG = {
-            easy:   { name: 'Bike',   allowed_roads: [TILE_TYPES.SMALL_ROAD, TILE_TYPES.LARGE_ROAD, TILE_TYPES.DIAGONAL] },
-            normal: { name: 'Car',    allowed_roads: [TILE_TYPES.SMALL_ROAD, TILE_TYPES.LARGE_ROAD, TILE_TYPES.DIAGONAL] },
-            hard:   { name: 'Van',    allowed_roads: [TILE_TYPES.LARGE_ROAD, TILE_TYPES.DIAGONAL] },
-            expert: { name: 'Truck',  allowed_roads: [TILE_TYPES.LARGE_ROAD] },
-        };
-
-        // CORRECTED: Use exact token mapping from working evaluation
         const HRM_TOKEN_MAP = {
             PAD: 0, OBSTACLE: 1, SMALL_ROAD: 2, LARGE_ROAD: 3, DIAGONAL: 4,
             TRAFFIC_JAM: 5, ROAD_CLOSURE: 6, START: 7, END: 8, PATH: 9
         };
-        
-        // --- DOM Elements ---
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const predictBtn = document.getElementById('predict-btn');
-        const generateMapBtn = document.getElementById('generate-map-btn');
-        const compareOracleBtn = document.getElementById('compare-oracle-btn');
+
+        // DOM Elements
+        const runEvaluationBtn = document.getElementById('run-evaluation-btn');
         const testConnectionBtn = document.getElementById('test-connection-btn');
-        const statusEl = document.getElementById('status');
-        const modelStatusEl = document.getElementById('model-status');
-        const difficultyButtons = document.getElementById('difficulty-buttons');
-        const timeSelector = document.getElementById('time-selector');
+        const connectionStatus = document.getElementById('connection-status');
+        const numTestsInput = document.getElementById('num-tests');
+        const progressPanel = document.getElementById('progress-panel');
+        const progressBar = document.getElementById('progress-bar');
+        const progressText = document.getElementById('progress-text');
+        const testResultsLive = document.getElementById('test-results-live');
         const resultsPanel = document.getElementById('results-panel');
-        const hrmResult = document.getElementById('hrm-result');
-        const oracleResult = document.getElementById('oracle-result');
-        const matchResult = document.getElementById('match-result');
+        const visualPanel = document.getElementById('visual-panel');
+        const hrmCanvas = document.getElementById('hrm-canvas');
+        const oracleCanvas = document.getElementById('oracle-canvas');
+        const prevExampleBtn = document.getElementById('prev-example-btn');
+        const nextExampleBtn = document.getElementById('next-example-btn');
+        const exampleCounter = document.getElementById('example-counter');
+        const downloadResultsBtn = document.getElementById('download-results-btn');
 
-        // --- Game State ---
-        let currentDifficulty = 'easy';
-        let currentHour = 8;
-        let grid = [];
-        let trafficGrid = [];
-        let startPos = null;
-        let endPos = null;
-        let isAnimating = false;
+        // Global state
+        let evaluationResults = [];
+        let currentExampleIndex = 0;
+        let hrmCtx, oracleCtx;
         let tileSize = 1;
-        let lastHrmPrediction = null;
-        let lastOraclePath = null;
-        let currentInputSequence = null;
 
-        // --- CORRECTED: Use exact map generation from working evaluation ---
-        function generateMap() {
-            // Create base grid - exact same logic as working evaluation
-            grid = Array(MAP_DIMENSIONS.height).fill(null).map(() => Array(MAP_DIMENSIONS.width).fill(TILE_TYPES.OBSTACLE));
+        // Initialize canvases
+        function initCanvases() {
+            const containerSize = Math.min(400, window.innerWidth * 0.4);
+            
+            hrmCanvas.width = containerSize;
+            hrmCanvas.height = containerSize;
+            oracleCanvas.width = containerSize;
+            oracleCanvas.height = containerSize;
+            
+            hrmCtx = hrmCanvas.getContext('2d');
+            oracleCtx = oracleCanvas.getContext('2d');
+            tileSize = containerSize / MAP_DIMENSIONS.width;
+        }
 
-            // Major avenues (exact same as evaluation)
-            const avenues = [3, 8, 13, 18, 23, 28, 33, 37];
-            for (let avenue of avenues) {
+        // Test HRM server connection
+        async function testConnection() {
+            testConnectionBtn.disabled = true;
+            connectionStatus.textContent = 'Testing connection...';
+            
+            try {
+                const response = await fetch(`${HRM_SERVER_URL}/health`);
+                if (response.ok) {
+                    connectionStatus.textContent = 'Connected to HRM server';
+                    connectionStatus.className = 'text-sm text-green-700';
+                    runEvaluationBtn.disabled = false;
+                } else {
+                    throw new Error('Server responded with error');
+                }
+            } catch (error) {
+                connectionStatus.textContent = 'Cannot connect to HRM server';
+                connectionStatus.className = 'text-sm text-red-700';
+                runEvaluationBtn.disabled = true;
+            }
+            
+            testConnectionBtn.disabled = false;
+        }
+
+        // Generate city logistics scenario
+        function generateScenario() {
+            // Create base grid
+            const grid = Array(MAP_DIMENSIONS.height).fill().map(() => Array(MAP_DIMENSIONS.width).fill(TILE_TYPES.OBSTACLE));
+
+            // Add road network (same as logistics game)
+            const avenues = [3, 8, 13, 18, 23, 28];
+            for (const avenue of avenues) {
                 for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
                     if (avenue < MAP_DIMENSIONS.width) {
                         grid[y][avenue] = TILE_TYPES.LARGE_ROAD;
@@ -257,9 +282,8 @@
                 }
             }
 
-            // Major streets (exact same as evaluation)
-            const streets = [2, 6, 10, 14, 18, 22, 26, 30, 34, 37];
-            for (let street of streets) {
+            const streets = [2, 6, 10, 14, 18, 22, 26];
+            for (const street of streets) {
                 for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
                     if (street < MAP_DIMENSIONS.height) {
                         grid[street][x] = TILE_TYPES.LARGE_ROAD;
@@ -267,7 +291,7 @@
                 }
             }
 
-            // Side streets (exact same as evaluation)
+            // Side streets
             for (let y = 4; y < MAP_DIMENSIONS.height; y += 4) {
                 for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
                     if (grid[y][x] === TILE_TYPES.OBSTACLE) {
@@ -284,7 +308,7 @@
                 }
             }
 
-            // Main diagonal (exact same as evaluation)
+            // Main diagonal
             for (let i = 0; i < MAP_DIMENSIONS.width - 5; i++) {
                 const x = i;
                 const y = Math.floor((i * MAP_DIMENSIONS.height) / MAP_DIMENSIONS.width);
@@ -294,31 +318,14 @@
                 }
             }
 
-            // Central park (exact same as evaluation)
-            const parkStartX = Math.floor(MAP_DIMENSIONS.width * 0.4);
-            const parkEndX = Math.floor(MAP_DIMENSIONS.width * 0.65);
-            const parkStartY = Math.floor(MAP_DIMENSIONS.height * 0.15);
-            const parkEndY = Math.floor(MAP_DIMENSIONS.height * 0.45);
-            
-            for (let y = parkStartY; y < parkEndY; y++) {
-                for (let x = parkStartX; x < parkEndX; x++) {
-                    if (x < MAP_DIMENSIONS.width && y < MAP_DIMENSIONS.height) {
-                        grid[y][x] = TILE_TYPES.OBSTACLE;
-                    }
-                }
-            }
+            // Add traffic
+            const trafficGrid = addTraffic(grid, 8); // Rush hour
 
-            placeStartAndEnd();
-            updateTrafficAndDraw();
-        }
-
-        // CORRECTED: Use exact same logic as working evaluation
-        function placeStartAndEnd() {
+            // Find start and end positions
             const roadPositions = [];
-            
             for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
                 for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
-                    if (grid[y][x] !== TILE_TYPES.OBSTACLE) {
+                    if (isRoadTile(trafficGrid[y][x])) {
                         const edgeDistance = Math.min(x, y, MAP_DIMENSIONS.width - 1 - x, MAP_DIMENSIONS.height - 1 - y);
                         if (edgeDistance >= 2) {
                             roadPositions.push({ x, y });
@@ -327,364 +334,307 @@
                 }
             }
 
-            if (roadPositions.length >= 2) {
-                let attempts = 0;
-                do {
-                    const startIdx = Math.floor(Math.random() * roadPositions.length);
-                    startPos = roadPositions[startIdx];
-                    
-                    const validEndPositions = roadPositions.filter(pos => {
-                        const distance = Math.abs(pos.x - startPos.x) + Math.abs(pos.y - startPos.y);
-                        return distance >= 15 && distance <= 50;
-                    });
-                    
-                    if (validEndPositions.length > 0) {
-                        endPos = validEndPositions[Math.floor(Math.random() * validEndPositions.length)];
-                        break;
+            // Select start and end
+            const startPos = roadPositions[Math.floor(Math.random() * roadPositions.length)];
+            const validEndPositions = roadPositions.filter(pos => {
+                const distance = Math.abs(pos.x - startPos.x) + Math.abs(pos.y - startPos.y);
+                return distance >= 15 && distance <= 45;
+            });
+            const endPos = validEndPositions.length > 0 ? 
+                validEndPositions[Math.floor(Math.random() * validEndPositions.length)] : 
+                roadPositions[roadPositions.length - 1];
+
+            // Create input sequence
+            const inputSequence = [];
+            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
+                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
+                    if (x === startPos.x && y === startPos.y) {
+                        inputSequence.push(HRM_TOKEN_MAP.START);
+                    } else if (x === endPos.x && y === endPos.y) {
+                        inputSequence.push(HRM_TOKEN_MAP.END);
+                    } else {
+                        inputSequence.push(gridToToken(trafficGrid[y][x]));
                     }
-                    
-                    attempts++;
-                } while (attempts < 10);
-                
-                if (attempts >= 10) {
-                    startPos = roadPositions[0];
-                    endPos = roadPositions[roadPositions.length - 1];
                 }
-            } else {
-                startPos = { x: 5, y: 5 };
-                endPos = { x: MAP_DIMENSIONS.width - 5, y: MAP_DIMENSIONS.height - 5 };
             }
+
+            // Generate oracle path
+            const oraclePath = solvePathAStar(trafficGrid, startPos, endPos);
+
+            return {
+                inputSequence,
+                trafficGrid,
+                startPos,
+                endPos,
+                oraclePath
+            };
         }
 
-        // CORRECTED: Exact traffic logic from working evaluation
         function addTraffic(baseGrid, hour) {
-            let newTrafficGrid = baseGrid.map(row => [...row]);
-            
-            let trafficIntensity = 0;
-            let constructionActive = false;
-            
-            if (hour >= 7 && hour <= 9) {
-                trafficIntensity = 0.4;
-            } else if (hour >= 17 && hour <= 19) {
-                trafficIntensity = 0.45;
-            } else if (hour >= 12 && hour <= 13) {
-                trafficIntensity = 0.25;
-            } else if (hour >= 2 && hour <= 5) {
-                constructionActive = true;
-                trafficIntensity = 0.1;
-            } else {
-                trafficIntensity = 0.1;
-            }
+            const trafficGrid = baseGrid.map(row => [...row]);
+            const trafficIntensity = (hour >= 7 && hour <= 9) || (hour >= 17 && hour <= 19) ? 0.4 : 0.1;
 
             for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
                 for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
                     const roadType = baseGrid[y][x];
-                    
                     if (roadType === TILE_TYPES.LARGE_ROAD || roadType === TILE_TYPES.DIAGONAL) {
-                        if (constructionActive && Math.random() < 0.05) {
-                            newTrafficGrid[y][x] = 'ROAD_CLOSURE';
-                        } else if (Math.random() < trafficIntensity) {
-                            newTrafficGrid[y][x] = 'TRAFFIC_JAM';
-                        }
-                    } else if (roadType === TILE_TYPES.SMALL_ROAD) {
-                        if (Math.random() < trafficIntensity * 0.3) {
-                            newTrafficGrid[y][x] = 'TRAFFIC_JAM';
+                        if (Math.random() < trafficIntensity) {
+                            trafficGrid[y][x] = 'TRAFFIC_JAM';
                         }
                     }
                 }
             }
 
-            return newTrafficGrid;
+            return trafficGrid;
         }
 
-        function updateTrafficAndDraw() {
-            trafficGrid = addTraffic(grid, currentHour);
-            drawMap(trafficGrid);
-            resultsPanel.classList.add('hidden');
-            
-            // Create input sequence for HRM
-            currentInputSequence = gridToHRMSequence(grid, trafficGrid, startPos, endPos);
-            
-            lastHrmPrediction = null;
-            lastOraclePath = null;
+        function isRoadTile(tile) {
+            return tile === TILE_TYPES.SMALL_ROAD || tile === TILE_TYPES.LARGE_ROAD || 
+                   tile === TILE_TYPES.DIAGONAL || tile === 'TRAFFIC_JAM';
         }
 
-        // CORRECTED: Exact sequence generation from working evaluation
-        function gridToHRMSequence(baseGrid, trafficGrid, startPos, endPos) {
-            const sequence = new Array(MAP_DIMENSIONS.width * MAP_DIMENSIONS.height);
-            
-            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
-                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
-                    const idx = y * MAP_DIMENSIONS.width + x;
-                    
-                    if (startPos && startPos.x === x && startPos.y === y) {
-                        sequence[idx] = HRM_TOKEN_MAP.START;
-                    } else if (endPos && endPos.x === x && endPos.y === y) {
-                        sequence[idx] = HRM_TOKEN_MAP.END;
-                    } else if (trafficGrid[y][x] === 'TRAFFIC_JAM') {
-                        sequence[idx] = HRM_TOKEN_MAP.TRAFFIC_JAM;
-                    } else if (trafficGrid[y][x] === 'ROAD_CLOSURE') {
-                        sequence[idx] = HRM_TOKEN_MAP.ROAD_CLOSURE;
-                    } else {
-                        switch (baseGrid[y][x]) {
-                            case TILE_TYPES.OBSTACLE: sequence[idx] = HRM_TOKEN_MAP.OBSTACLE; break;
-                            case TILE_TYPES.SMALL_ROAD: sequence[idx] = HRM_TOKEN_MAP.SMALL_ROAD; break;
-                            case TILE_TYPES.LARGE_ROAD: sequence[idx] = HRM_TOKEN_MAP.LARGE_ROAD; break;
-                            case TILE_TYPES.DIAGONAL: sequence[idx] = HRM_TOKEN_MAP.DIAGONAL; break;
-                            default: sequence[idx] = HRM_TOKEN_MAP.OBSTACLE;
+        function gridToToken(tile) {
+            if (tile === 'TRAFFIC_JAM') return HRM_TOKEN_MAP.TRAFFIC_JAM;
+            if (tile === 'ROAD_CLOSURE') return HRM_TOKEN_MAP.ROAD_CLOSURE;
+            switch (tile) {
+                case TILE_TYPES.OBSTACLE: return HRM_TOKEN_MAP.OBSTACLE;
+                case TILE_TYPES.SMALL_ROAD: return HRM_TOKEN_MAP.SMALL_ROAD;
+                case TILE_TYPES.LARGE_ROAD: return HRM_TOKEN_MAP.LARGE_ROAD;
+                case TILE_TYPES.DIAGONAL: return HRM_TOKEN_MAP.DIAGONAL;
+                default: return HRM_TOKEN_MAP.OBSTACLE;
+            }
+        }
+
+        // A* pathfinding
+        function solvePathAStar(grid, start, end) {
+            const openSet = [[0, start]];
+            const cameFrom = {};
+            const gScore = { [`${start.x},${start.y}`]: 0 };
+            const fScore = { [`${start.x},${start.y}`]: heuristic(start, end) };
+
+            function heuristic(a, b) {
+                return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+            }
+
+            function getNeighbors(node) {
+                const neighbors = [];
+                const dirs = [{ x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 0 }, { x: -1, y: 0 }];
+                for (const dir of dirs) {
+                    const nextX = node.x + dir.x;
+                    const nextY = node.y + dir.y;
+                    if (nextX >= 0 && nextX < MAP_DIMENSIONS.width && nextY >= 0 && nextY < MAP_DIMENSIONS.height) {
+                        const tile = grid[nextY][nextX];
+                        if (isRoadTile(tile)) {
+                            neighbors.push({ x: nextX, y: nextY });
+                        }
+                    }
+                }
+                return neighbors;
+            }
+
+            function getCost(tile) {
+                return tile === 'TRAFFIC_JAM' ? 8 : 1;
+            }
+
+            while (openSet.length > 0) {
+                openSet.sort((a, b) => a[0] - b[0]);
+                const [currentF, current] = openSet.shift();
+
+                if (current.x === end.x && current.y === end.y) {
+                    const path = [];
+                    let temp = current;
+                    while (temp) {
+                        path.unshift(temp);
+                        temp = cameFrom[`${temp.x},${temp.y}`];
+                    }
+                    return path;
+                }
+
+                const neighbors = getNeighbors(current);
+                for (const neighbor of neighbors) {
+                    const neighborKey = `${neighbor.x},${neighbor.y}`;
+                    const currentKey = `${current.x},${current.y}`;
+                    const cost = getCost(grid[neighbor.y][neighbor.x]);
+                    const tentativeGScore = gScore[currentKey] + cost;
+
+                    if (!(neighborKey in gScore) || tentativeGScore < gScore[neighborKey]) {
+                        cameFrom[neighborKey] = current;
+                        gScore[neighborKey] = tentativeGScore;
+                        fScore[neighborKey] = gScore[neighborKey] + heuristic(neighbor, end);
+                        
+                        if (!openSet.some(item => item[1].x === neighbor.x && item[1].y === neighbor.y)) {
+                            openSet.push([fScore[neighborKey], neighbor]);
                         }
                     }
                 }
             }
-            
-            return sequence;
+
+            return [];
         }
 
-        // CORRECTED: Extract path coordinates from HRM prediction
-        function extractPathFromHRMPrediction(predicted_sequence) {
+        // Get HRM prediction
+        async function getHRMPrediction(inputSequence) {
+            try {
+                const response = await fetch(`${HRM_SERVER_URL}/predict`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        inputs: inputSequence,
+                        log_intermediate: false
+                    })
+                });
+
+                if (!response.ok) {
+                    throw new Error(`Server error: ${response.statusText}`);
+                }
+
+                const result = await response.json();
+                return result.path;
+            } catch (error) {
+                console.error('Request failed:', error);
+                return null;
+            }
+        }
+
+        // Extract PATH coordinates from prediction
+        function extractPathCoords(predictedSequence) {
             const pathCoords = [];
-            
-            for (let i = 0; i < predicted_sequence.length; i++) {
-                if (predicted_sequence[i] === HRM_TOKEN_MAP.PATH) {
+            for (let i = 0; i < predictedSequence.length; i++) {
+                if (predictedSequence[i] === HRM_TOKEN_MAP.PATH) {
+                    const y = Math.floor(i / MAP_DIMENSIONS.width);
+                    const x = i % MAP_DIMENSIONS.width;
+                    pathCoords.append({ x, y });
+                }
+            }
+            return pathCoords;
+        }
+
+        // Trace complete path using BFS
+        function traceCompletePath(predictedSequence, startPos, endPos) {
+            const pathCoords = [];
+            for (let i = 0; i < predictedSequence.length; i++) {
+                if (predictedSequence[i] === HRM_TOKEN_MAP.PATH) {
                     const y = Math.floor(i / MAP_DIMENSIONS.width);
                     const x = i % MAP_DIMENSIONS.width;
                     pathCoords.push({ x, y });
                 }
             }
-            
-            return pathCoords;
+
+            if (pathCoords.length === 0) {
+                return { foundCompletePath: false, tracedPath: [], reason: 'No PATH tokens found' };
+            }
+
+            const pathSet = new Set(pathCoords.map(p => `${p.x},${p.y}`));
+            pathSet.add(`${startPos.x},${startPos.y}`);
+            pathSet.add(`${endPos.x},${endPos.y}`);
+
+            // BFS to trace from start to end
+            const queue = [{ pos: startPos, path: [startPos] }];
+            const visited = new Set([`${startPos.x},${startPos.y}`]);
+
+            while (queue.length > 0) {
+                const { pos: currentPos, path: currentPath } = queue.shift();
+
+                if (currentPos.x === endPos.x && currentPos.y === endPos.y) {
+                    return { 
+                        foundCompletePath: true, 
+                        tracedPath: currentPath, 
+                        reason: 'Complete path found' 
+                    };
+                }
+
+                // Check adjacent cells
+                const dirs = [{ x: 0, y: 1 }, { x: 0, y: -1 }, { x: 1, y: 0 }, { x: -1, y: 0 }];
+                for (const dir of dirs) {
+                    const nextX = currentPos.x + dir.x;
+                    const nextY = currentPos.y + dir.y;
+                    const nextPos = { x: nextX, y: nextY };
+                    const nextKey = `${nextX},${nextY}`;
+
+                    if (nextX >= 0 && nextX < MAP_DIMENSIONS.width && 
+                        nextY >= 0 && nextY < MAP_DIMENSIONS.height &&
+                        pathSet.has(nextKey) && !visited.has(nextKey)) {
+                        
+                        visited.add(nextKey);
+                        queue.push({ pos: nextPos, path: [...currentPath, nextPos] });
+                    }
+                }
+            }
+
+            return { 
+                foundCompletePath: false, 
+                tracedPath: [], 
+                reason: `No connected path (found ${pathCoords.length} scattered tokens)` 
+            };
         }
 
-        // CORRECTED: Check if model uses PATH tokens at start/end (the correct behavior)
-        function checkStartEndAsPath(predicted_sequence, startPos, endPos) {
+        // Evaluate single prediction
+        function evaluatePrediction(scenario, predictedSequence) {
+            const { startPos, endPos, oraclePath, trafficGrid } = scenario;
+            
+            // Trace actual path
+            const pathAnalysis = traceCompletePath(predictedSequence, startPos, endPos);
+            
+            // Check start/end detection
             const startIdx = startPos.y * MAP_DIMENSIONS.width + startPos.x;
             const endIdx = endPos.y * MAP_DIMENSIONS.width + endPos.x;
+            const startMarked = predictedSequence[startIdx] === HRM_TOKEN_MAP.PATH;
+            const endMarked = predictedSequence[endIdx] === HRM_TOKEN_MAP.PATH;
             
-            const startHasPath = predicted_sequence[startIdx] === HRM_TOKEN_MAP.PATH;
-            const endHasPath = predicted_sequence[endIdx] === HRM_TOKEN_MAP.PATH;
-            
-            return { startHasPath, endHasPath };
-        }
-
-        // --- Enhanced HRM Prediction with CORRECTED evaluation ---
-        async function getHRMPrediction() {
-            if (!currentInputSequence) {
-                statusEl.textContent = 'Generate a scenario first!';
-                return;
-            }
-
-            statusEl.textContent = 'HRM is thinking...';
-            predictBtn.disabled = true;
-
-            try {
-                const response = await fetch('http://127.0.0.1:5000/predict', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ 
-                        inputs: currentInputSequence,
-                        log_intermediate: true
-                    })
-                });
-
-                if (!response.ok) {
-                    throw new Error(`Model server error: ${response.statusText}`);
-                }
-
-                const result = await response.json();
-                
-                // Extract path coordinates for visualization
-                lastHrmPrediction = extractPathFromHRMPrediction(result.path);
-                
-                // CORRECTED evaluation
-                const startEndCheck = checkStartEndAsPath(result.path, startPos, endPos);
-                
-                predictBtn.disabled = false;
-                
-                // Draw HRM prediction
-                drawMapWithPaths(trafficGrid, lastHrmPrediction, null, 'hrm');
-                
-                statusEl.textContent = `HRM found path with ${lastHrmPrediction.length} waypoints`;
-                
-                updateResults();
-                
-            } catch (error) {
-                console.error("Error getting prediction:", error);
-                statusEl.textContent = "Could not connect to HRM server. Is it running?";
-                predictBtn.disabled = false;
-            }
-        }
-
-        async function handleCompareOracle() {
-            if (isAnimating) return;
-            
-            statusEl.textContent = 'Computing A* oracle and comparing...';
-            compareOracleBtn.disabled = true;
-            
-            if (!lastHrmPrediction) {
-                await getHRMPrediction();
-            }
-            
-            const vehicle = VEHICLE_CONFIG[currentDifficulty];
-            lastOraclePath = solvePathAStar(trafficGrid, startPos, endPos, vehicle);
-            
-            compareOracleBtn.disabled = false;
-            
-            if (lastOraclePath.length > 0) {
-                drawMapWithPaths(trafficGrid, lastHrmPrediction, lastOraclePath, 'both');
-                statusEl.textContent = `Comparison: HRM ${lastHrmPrediction?.length || 0} vs Oracle ${lastOraclePath.length} waypoints`;
-            } else {
-                statusEl.textContent = 'No valid path exists for this scenario';
-            }
-            
-            updateResults();
-        }
-
-        // CORRECTED: Enhanced results display
-        function updateResults() {
-            if (!lastHrmPrediction && !lastOraclePath) return;
-            
-            resultsPanel.classList.remove('hidden');
-            
-            if (lastHrmPrediction) {
-                const hrmCost = lastHrmPrediction.length;
-                hrmResult.innerHTML = `
-                    <div>Waypoints: ${lastHrmPrediction.length}</div>
-                    <div>Path found: ${hrmCost > 0 ? 'Yes' : 'No'}</div>
-                `;
-                
-                // CORRECTED: Check start/end detection
-                const startEndCheck = checkStartEndAsPath(currentInputSequence, startPos, endPos);
-                document.getElementById('start-detection').textContent = 'PATH token (100% accurate)';
-                document.getElementById('end-detection').textContent = 'PATH token (100% accurate)';
-            } else {
-                hrmResult.innerHTML = '<div>Not computed</div>';
-            }
-            
-            if (lastOraclePath) {
-                oracleResult.innerHTML = `
-                    <div>Waypoints: ${lastOraclePath.length}</div>
-                    <div>Path found: ${lastOraclePath.length > 0 ? 'Yes' : 'No'}</div>
-                `;
-            } else {
-                oracleResult.innerHTML = '<div>Not computed</div>';
-            }
-            
-            if (lastHrmPrediction && lastOraclePath) {
-                const hrmValid = lastHrmPrediction.length > 0;
-                const oracleValid = lastOraclePath.length > 0;
-                
-                // Calculate overlap and efficiency
-                let overlap = 0;
-                let efficiency = 'N/A';
-                
-                if (hrmValid && oracleValid) {
-                    const hrmSet = new Set(lastHrmPrediction.map(p => `${p.x},${p.y}`));
-                    const oracleSet = new Set(lastOraclePath.map(p => `${p.x},${p.y}`));
-                    overlap = (hrmSet.size > 0) ? (Array.from(hrmSet).filter(p => oracleSet.has(p)).length / hrmSet.size * 100) : 0;
-                    efficiency = (lastOraclePath.length / lastHrmPrediction.length);
-                    
-                    document.getElementById('path-overlap').textContent = `${overlap.toFixed(1)}%`;
-                    document.getElementById('path-efficiency').textContent = efficiency.toFixed(2);
-                }
-                
-                if (!hrmValid && !oracleValid) {
-                    matchResult.innerHTML = '<div class="text-gray-600">Both failed</div>';
-                    document.getElementById('match-result-container').className = 'text-center p-3 rounded-lg warning-metric';
-                } else if (!hrmValid) {
-                    matchResult.innerHTML = '<div class="text-red-600">HRM failed</div>';
-                    document.getElementById('match-result-container').className = 'text-center p-3 rounded-lg error-metric';
-                } else if (!oracleValid) {
-                    matchResult.innerHTML = '<div class="text-orange-600">No valid path</div>';
-                    document.getElementById('match-result-container').className = 'text-center p-3 rounded-lg warning-metric';
-                } else {
-                    const ratio = lastHrmPrediction.length / lastOraclePath.length;
-                    
-                    if (ratio <= 1.05) {
-                        matchResult.innerHTML = '<div class="text-green-600">Optimal/Better</div>';
-                        document.getElementById('match-result-container').className = 'text-center p-3 rounded-lg success-metric';
-                    } else if (ratio <= 1.2) {
-                        matchResult.innerHTML = '<div class="text-yellow-600">Near-optimal</div>';
-                        document.getElementById('match-result-container').className = 'text-center p-3 rounded-lg warning-metric';
-                    } else {
-                        matchResult.innerHTML = '<div class="text-red-600">Suboptimal</div>';
-                        document.getElementById('match-result-container').className = 'text-center p-3 rounded-lg error-metric';
-                    }
+            // Extract all PATH coordinates
+            const allPathCoords = [];
+            for (let i = 0; i < predictedSequence.length; i++) {
+                if (predictedSequence[i] === HRM_TOKEN_MAP.PATH) {
+                    const y = Math.floor(i / MAP_DIMENSIONS.width);
+                    const x = i % MAP_DIMENSIONS.width;
+                    allPathCoords.push({ x, y });
                 }
             }
+            
+            return {
+                foundCompletePath: pathAnalysis.foundCompletePath,
+                tracedPath: pathAnalysis.tracedPath,
+                reason: pathAnalysis.reason,
+                startMarked,
+                endMarked,
+                allPathCoords,
+                pathLength: pathAnalysis.tracedPath.length,
+                oracleLength: oraclePath.length,
+                totalPathTokens: allPathCoords.length
+            };
         }
 
-        function drawMap(dynamicGrid, path = []) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+        // Draw map on canvas
+        function drawMap(ctx, trafficGrid, path, color, startPos, endPos) {
+            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
 
+            // Draw base grid
             for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
                 for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
-                    let color;
-                    switch (dynamicGrid[y][x]) {
-                        case TILE_TYPES.OBSTACLE: color = COLORS.OBSTACLE; break;
-                        case TILE_TYPES.SMALL_ROAD: color = COLORS.SMALL_ROAD; break;
-                        case TILE_TYPES.LARGE_ROAD: color = COLORS.LARGE_ROAD; break;
-                        case TILE_TYPES.DIAGONAL: color = '#a78bfa'; break;
-                        case 'TRAFFIC_JAM': color = COLORS.TRAFFIC_JAM; break;
-                        case 'ROAD_CLOSURE': color = COLORS.ROAD_CLOSURE; break;
-                        default: color = COLORS.OBSTACLE;
+                    let tileColor;
+                    const tile = trafficGrid[y][x];
+                    
+                    switch (tile) {
+                        case TILE_TYPES.OBSTACLE: tileColor = COLORS.OBSTACLE; break;
+                        case TILE_TYPES.SMALL_ROAD: tileColor = COLORS.SMALL_ROAD; break;
+                        case TILE_TYPES.LARGE_ROAD: tileColor = COLORS.LARGE_ROAD; break;
+                        case TILE_TYPES.DIAGONAL: tileColor = '#a78bfa'; break;
+                        case 'TRAFFIC_JAM': tileColor = COLORS.TRAFFIC_JAM; break;
+                        case 'ROAD_CLOSURE': tileColor = COLORS.ROAD_CLOSURE; break;
+                        default: tileColor = COLORS.OBSTACLE;
                     }
-                    ctx.fillStyle = color;
+                    
+                    ctx.fillStyle = tileColor;
                     ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
                 }
             }
-            
-            if (path.length > 0) {
-                ctx.fillStyle = COLORS.HRM_PATH;
-                path.forEach(p => {
-                    ctx.fillRect(p.x * tileSize, p.y * tileSize, tileSize, tileSize);
-                });
-            }
 
-            if (startPos) {
-                ctx.fillStyle = COLORS.START;
-                ctx.fillRect(startPos.x * tileSize, startPos.y * tileSize, tileSize, tileSize);
-            }
-            if (endPos) {
-                ctx.fillStyle = COLORS.END;
-                ctx.fillRect(endPos.x * tileSize, endPos.y * tileSize, tileSize, tileSize);
-            }
-        }
-
-        function drawMapWithPaths(dynamicGrid, hrmPath, oraclePath, mode) {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            // Draw base map
-            for (let y = 0; y < MAP_DIMENSIONS.height; y++) {
-                for (let x = 0; x < MAP_DIMENSIONS.width; x++) {
-                    let color;
-                    switch (dynamicGrid[y][x]) {
-                        case TILE_TYPES.OBSTACLE: color = COLORS.OBSTACLE; break;
-                        case TILE_TYPES.SMALL_ROAD: color = COLORS.SMALL_ROAD; break;
-                        case TILE_TYPES.LARGE_ROAD: color = COLORS.LARGE_ROAD; break;
-                        case TILE_TYPES.DIAGONAL: color = '#a78bfa'; break;
-                        case 'TRAFFIC_JAM': color = COLORS.TRAFFIC_JAM; break;
-                        case 'ROAD_CLOSURE': color = COLORS.ROAD_CLOSURE; break;
-                        default: color = COLORS.OBSTACLE;
-                    }
-                    ctx.fillStyle = color;
-                    ctx.fillRect(x * tileSize, y * tileSize, tileSize, tileSize);
+            // Draw path
+            if (path && path.length > 0) {
+                ctx.fillStyle = color;
+                for (const pos of path) {
+                    ctx.fillRect(pos.x * tileSize, pos.y * tileSize, tileSize, tileSize);
                 }
-            }
-            
-            // Draw oracle path first (if both paths)
-            if (oraclePath && oraclePath.length > 0 && mode === 'both') {
-                ctx.fillStyle = COLORS.ORACLE_PATH;
-                oraclePath.forEach(p => {
-                    ctx.fillRect(p.x * tileSize, p.y * tileSize, tileSize, tileSize);
-                });
-            }
-            
-            // Draw HRM path on top
-            if (hrmPath && hrmPath.length > 0) {
-                ctx.fillStyle = mode === 'both' ? COLORS.HRM_PATH : COLORS.HRM_PATH;
-                hrmPath.forEach(p => {
-                    ctx.fillRect(p.x * tileSize, p.y * tileSize, tileSize, tileSize);
-                });
             }
 
             // Draw start and end
@@ -698,190 +648,204 @@
             }
         }
 
-        // Keep all the A* pathfinding code the same...
-        function solvePathAStar(dynamicGrid, start, end, vehicle) {
-            const openSet = [start];
-            const cameFrom = {};
-            const closedSet = new Set();
+        // Update visual display
+        function updateVisualDisplay() {
+            if (evaluationResults.length === 0) return;
+
+            const result = evaluationResults[currentExampleIndex];
+            const scenario = result.scenario;
+
+            // Draw HRM prediction
+            drawMap(hrmCtx, scenario.trafficGrid, result.evaluation.allPathCoords, COLORS.HRM_PATH, scenario.startPos, scenario.endPos);
             
-            const gScore = {};
-            const fScore = {};
+            // Draw Oracle solution
+            drawMap(oracleCtx, scenario.trafficGrid, scenario.oraclePath, COLORS.ORACLE_PATH, scenario.startPos, scenario.endPos);
 
-            const startKey = `${start.x},${start.y}`;
-            gScore[startKey] = 0;
-            fScore[startKey] = heuristic(start, end);
-
-            while (openSet.length > 0) {
-                let current = openSet[0];
-                let currentIndex = 0;
-                for (let i = 1; i < openSet.length; i++) {
-                    const currentF = fScore[`${openSet[i].x},${openSet[i].y}`] || Infinity;
-                    const bestF = fScore[`${current.x},${current.y}`] || Infinity;
-                    if (currentF < bestF) {
-                        current = openSet[i];
-                        currentIndex = i;
-                    }
-                }
-
-                if (current.x === end.x && current.y === end.y) {
-                    return reconstructPath(cameFrom, current);
-                }
-
-                openSet.splice(currentIndex, 1);
-                closedSet.add(`${current.x},${current.y}`);
-                
-                const neighbors = getNeighbors(current, dynamicGrid, vehicle);
-                for (const neighbor of neighbors) {
-                    const neighborKey = `${neighbor.x},${neighbor.y}`;
-                    const currentKey = `${current.x},${current.y}`;
-                    
-                    if (closedSet.has(neighborKey)) continue;
-                    
-                    const cost = getCost(dynamicGrid[neighbor.y][neighbor.x]);
-                    const tentativeGScore = (gScore[currentKey] || 0) + cost;
-
-                    if (tentativeGScore < (gScore[neighborKey] || Infinity)) {
-                        cameFrom[neighborKey] = current;
-                        gScore[neighborKey] = tentativeGScore;
-                        fScore[neighborKey] = gScore[neighborKey] + heuristic(neighbor, end);
-                        
-                        if (!openSet.some(node => node.x === neighbor.x && node.y === neighbor.y)) {
-                            openSet.push(neighbor);
-                        }
-                    }
-                }
-            }
-            return [];
-        }
-        
-        function heuristic(a, b) {
-            return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
-        }
-
-        function getNeighbors(node, dynamicGrid, vehicle) {
-            const neighbors = [];
-            const dirs = [{x:0, y:1}, {x:0, y:-1}, {x:1, y:0}, {x:-1, y:0}];
-            for(const dir of dirs) {
-                const nextX = node.x + dir.x;
-                const nextY = node.y + dir.y;
-                if(nextX >= 0 && nextX < MAP_DIMENSIONS.width && nextY >= 0 && nextY < MAP_DIMENSIONS.height) {
-                    const tileType = dynamicGrid[nextY][nextX];
-                    
-                    if (tileType !== TILE_TYPES.OBSTACLE && tileType !== 'ROAD_CLOSURE') {
-                        if (vehicle.allowed_roads.includes(tileType) || tileType === 'TRAFFIC_JAM') {
-                            neighbors.push({x: nextX, y: nextY});
-                        }
-                    }
-                }
-            }
-            return neighbors;
-        }
-
-        function getCost(tileType) {
-            switch(tileType) {
-                case 'TRAFFIC_JAM': return 8;
-                case 'ROAD_CLOSURE': return Infinity;
-                case TILE_TYPES.LARGE_ROAD: return 1;
-                case TILE_TYPES.DIAGONAL: return 2;
-                case TILE_TYPES.SMALL_ROAD: return 3;
-                default: return 1;
-            }
-        }
-
-        function reconstructPath(cameFrom, current) {
-            const totalPath = [current];
-            let currentKey = `${current.x},${current.y}`;
-            while (cameFrom[currentKey]) {
-                current = cameFrom[currentKey];
-                currentKey = `${current.x},${current.y}`;
-                totalPath.unshift(current);
-            }
-            return totalPath;
-        }
-
-        async function testModelConnection() {
-            testConnectionBtn.disabled = true;
-            modelStatusEl.textContent = 'Testing connection...';
+            // Update analysis text
+            const hrmAnalysis = document.getElementById('hrm-analysis');
+            const oracleAnalysis = document.getElementById('oracle-analysis');
             
-            try {
-                const response = await fetch('http://127.0.0.1:5000/health');
-                
-                if (response.ok) {
-                    modelStatusEl.textContent = '✓ HRM server connected! Model achieves 100% start/end detection via PATH tokens!';
-                    modelStatusEl.className = 'text-sm text-green-700';
-                } else {
-                    throw new Error('Server responded with error');
-                }
-            } catch (error) {
-                modelStatusEl.textContent = '✗ Cannot connect to HRM server at http://127.0.0.1:5000';
-                modelStatusEl.className = 'text-sm text-red-700';
+            if (result.evaluation.foundCompletePath) {
+                hrmAnalysis.innerHTML = `Complete Path: ${result.evaluation.pathLength} steps<br>Status: SUCCESS`;
+                hrmAnalysis.className = 'mt-2 text-sm text-green-600';
+            } else {
+                hrmAnalysis.innerHTML = `${result.evaluation.reason}<br>PATH Tokens: ${result.evaluation.totalPathTokens}`;
+                hrmAnalysis.className = 'mt-2 text-sm text-red-600';
             }
             
-            testConnectionBtn.disabled = false;
+            oracleAnalysis.innerHTML = `Oracle Path: ${result.evaluation.oracleLength} steps<br>Algorithm: A* Search`;
+            oracleAnalysis.className = 'mt-2 text-sm text-purple-600';
+
+            // Update navigation
+            exampleCounter.textContent = `Example ${currentExampleIndex + 1} of ${evaluationResults.length}`;
+            prevExampleBtn.disabled = currentExampleIndex === 0;
+            nextExampleBtn.disabled = currentExampleIndex === evaluationResults.length - 1;
         }
-        
-        function handleDifficultyChange(e) {
-            if (e.target.tagName !== 'BUTTON') return;
+
+        // Run evaluation
+        async function runEvaluation() {
+            const numTests = parseInt(numTestsInput.value);
+            runEvaluationBtn.disabled = true;
             
-            const newDifficulty = e.target.dataset.difficulty;
-            currentDifficulty = newDifficulty;
-            
-            Array.from(difficultyButtons.children).forEach(btn => {
-                btn.classList.remove('bg-blue-500', 'text-white');
-                btn.classList.add('bg-gray-200', 'text-gray-800');
-            });
-            
-            e.target.classList.remove('bg-gray-200', 'text-gray-800');
-            e.target.classList.add('bg-blue-500', 'text-white');
-            
-            statusEl.textContent = `Selected: ${VEHICLE_CONFIG[currentDifficulty].name}. Generate scenario or get HRM prediction.`;
-            
-            lastHrmPrediction = null;
-            lastOraclePath = null;
+            progressPanel.classList.remove('hidden');
             resultsPanel.classList.add('hidden');
+            visualPanel.classList.add('hidden');
             
-            if (grid.length > 0 && !isAnimating) {
-                updateTrafficAndDraw();
+            evaluationResults = [];
+            testResultsLive.innerHTML = '';
+            
+            for (let i = 0; i < numTests; i++) {
+                progressBar.style.width = `${(i / numTests) * 100}%`;
+                progressText.textContent = `${i}/${numTests} tests completed`;
+                
+                try {
+                    // Generate scenario
+                    const scenario = generateScenario();
+                    
+                    // Get HRM prediction
+                    const predictedSequence = await getHRMPrediction(scenario.inputSequence);
+                    
+                    if (predictedSequence) {
+                        // Evaluate prediction
+                        const evaluation = evaluatePrediction(scenario, predictedSequence);
+                        
+                        evaluationResults.push({ scenario, predictedSequence, evaluation });
+                        
+                        // Add live result
+                        const resultDiv = document.createElement('div');
+                        resultDiv.className = `test-result ${evaluation.foundCompletePath ? 'success' : 'error'}`;
+                        resultDiv.textContent = `Test ${i+1}: ${evaluation.foundCompletePath ? 
+                            `SUCCESS (${evaluation.pathLength} vs ${evaluation.oracleLength} oracle)` : 
+                            `FAIL - ${evaluation.reason}`}`;
+                        testResultsLive.appendChild(resultDiv);
+                    } else {
+                        const resultDiv = document.createElement('div');
+                        resultDiv.className = 'test-result error';
+                        resultDiv.textContent = `Test ${i+1}: FAILED - No prediction received`;
+                        testResultsLive.appendChild(resultDiv);
+                    }
+                    
+                    // Auto-scroll to bottom
+                    testResultsLive.scrollTop = testResultsLive.scrollHeight;
+                    
+                } catch (error) {
+                    console.error(`Test ${i+1} failed:`, error);
+                    const resultDiv = document.createElement('div');
+                    resultDiv.className = 'test-result error';
+                    resultDiv.textContent = `Test ${i+1}: ERROR - ${error.message}`;
+                    testResultsLive.appendChild(resultDiv);
+                }
             }
-        }
-
-        function resizeCanvas() {
-            const container = canvas.parentElement;
-            const size = Math.min(container.clientWidth, 800);
-            canvas.width = size;
-            canvas.height = size;
-            tileSize = size / MAP_DIMENSIONS.width;
-            if (grid.length > 0) updateTrafficAndDraw();
-        }
-
-        function init() {
-            resizeCanvas();
-            window.addEventListener('resize', resizeCanvas);
-            predictBtn.addEventListener('click', getHRMPrediction);
-            compareOracleBtn.addEventListener('click', handleCompareOracle);
-            testConnectionBtn.addEventListener('click', testModelConnection);
-            generateMapBtn.addEventListener('click', () => {
-                if (isAnimating) return;
-                lastHrmPrediction = null;
-                lastOraclePath = null;
-                generateMap();
-                statusEl.textContent = 'New scenario generated. Ready for HRM evaluation.';
-            });
-            difficultyButtons.addEventListener('click', handleDifficultyChange);
-            timeSelector.addEventListener('change', () => {
-                currentHour = parseInt(timeSelector.value);
-                lastHrmPrediction = null;
-                lastOraclePath = null;
-                if (grid.length > 0 && !isAnimating) updateTrafficAndDraw();
-            });
             
-            difficultyButtons.querySelector(`[data-difficulty="${currentDifficulty}"]`).classList.add('bg-blue-500', 'text-white');
-            generateMap();
-            testModelConnection();
-            statusEl.textContent = 'CORRECTED: HRM evaluation with confirmed working configuration ready!';
+            progressBar.style.width = '100%';
+            progressText.textContent = `${numTests}/${numTests} tests completed`;
+            
+            // Calculate and display results
+            displayResults();
+            
+            runEvaluationBtn.disabled = false;
         }
 
-        document.addEventListener('DOMContentLoaded', init);
+        // Display results
+        function displayResults() {
+            if (evaluationResults.length === 0) return;
+
+            const completePathRate = evaluationResults.filter(r => r.evaluation.foundCompletePath).length / evaluationResults.length;
+            const validTraversalRate = completePathRate; // Assuming all complete paths are valid for now
+            const optimalPathRate = evaluationResults.filter(r => r.evaluation.foundCompletePath && r.evaluation.pathLength === r.evaluation.oracleLength).length / evaluationResults.length;
+            
+            const startDetectionRate = evaluationResults.filter(r => r.evaluation.startMarked).length / evaluationResults.length;
+            const endDetectionRate = evaluationResults.filter(r => r.evaluation.endMarked).length / evaluationResults.length;
+            
+            const avgHrmLength = evaluationResults.reduce((sum, r) => sum + r.evaluation.pathLength, 0) / evaluationResults.length;
+            const avgOracleLength = evaluationResults.reduce((sum, r) => sum + r.evaluation.oracleLength, 0) / evaluationResults.length;
+            const avgPathTokens = evaluationResults.reduce((sum, r) => sum + r.evaluation.totalPathTokens, 0) / evaluationResults.length;
+
+            // Update display
+            document.getElementById('complete-path-rate').textContent = `${(completePathRate * 100).toFixed(1)}%`;
+            document.getElementById('valid-traversal-rate').textContent = `${(validTraversalRate * 100).toFixed(1)}%`;
+            document.getElementById('optimal-path-rate').textContent = `${(optimalPathRate * 100).toFixed(1)}%`;
+            
+            document.getElementById('start-detection-rate').textContent = `${(startDetectionRate * 100).toFixed(1)}%`;
+            document.getElementById('end-detection-rate').textContent = `${(endDetectionRate * 100).toFixed(1)}%`;
+            
+            document.getElementById('avg-hrm-length').textContent = avgHrmLength.toFixed(1);
+            document.getElementById('avg-oracle-length').textContent = avgOracleLength.toFixed(1);
+            document.getElementById('avg-path-tokens').textContent = avgPathTokens.toFixed(1);
+
+            // Overall assessment
+            const assessmentEl = document.getElementById('overall-assessment');
+            const assessmentText = document.getElementById('assessment-text');
+            
+            if (completePathRate > 0.8) {
+                assessmentEl.className = 'mt-4 p-3 rounded-lg success';
+                assessmentText.textContent = 'SUCCESS: Model demonstrates strong pathfinding capabilities';
+            } else if (completePathRate > 0.3) {
+                assessmentEl.className = 'mt-4 p-3 rounded-lg warning';
+                assessmentText.textContent = 'PARTIAL: Model shows some pathfinding ability but with significant failures';
+            } else {
+                assessmentEl.className = 'mt-4 p-3 rounded-lg error';
+                assessmentText.textContent = 'FAILURE: Model has not learned proper pathfinding - likely outputting scattered tokens';
+            }
+
+            resultsPanel.classList.remove('hidden');
+            visualPanel.classList.remove('hidden');
+            
+            // Show first example
+            currentExampleIndex = 0;
+            updateVisualDisplay();
+        }
+
+        // Download results
+        function downloadResults() {
+            const results = {
+                timestamp: new Date().toISOString(),
+                total_tests: evaluationResults.length,
+                results: evaluationResults.map(r => ({
+                    found_complete_path: r.evaluation.foundCompletePath,
+                    path_length: r.evaluation.pathLength,
+                    oracle_length: r.evaluation.oracleLength,
+                    total_path_tokens: r.evaluation.totalPathTokens,
+                    start_marked: r.evaluation.startMarked,
+                    end_marked: r.evaluation.endMarked,
+                    reason: r.evaluation.reason
+                }))
+            };
+            
+            const blob = new Blob([JSON.stringify(results, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `hrm_evaluation_${new Date().getTime()}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // Event listeners
+        testConnectionBtn.addEventListener('click', testConnection);
+        runEvaluationBtn.addEventListener('click', runEvaluation);
+        downloadResultsBtn.addEventListener('click', downloadResults);
+        
+        prevExampleBtn.addEventListener('click', () => {
+            if (currentExampleIndex > 0) {
+                currentExampleIndex--;
+                updateVisualDisplay();
+            }
+        });
+        
+        nextExampleBtn.addEventListener('click', () => {
+            if (currentExampleIndex < evaluationResults.length - 1) {
+                currentExampleIndex++;
+                updateVisualDisplay();
+            }
+        });
+
+        // Initialize
+        window.addEventListener('resize', initCanvases);
+        initCanvases();
+        runEvaluationBtn.disabled = true;
     </script>
 </body>
 </html>

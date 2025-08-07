@@ -1,16 +1,18 @@
 #!/usr/bin/env python3
 """
-Fixed HRM Evaluation - All token assignment issues resolved
+FIXED HRM Evaluation - Proper pathfinding validation
+Replaces token-counting with actual graph traversal and connectivity validation
 """
 
 import requests
 import json
 import numpy as np
-from typing import List, Tuple, Dict, Optional
+from typing import List, Tuple, Dict, Optional, Set
 import matplotlib.pyplot as plt
 from pathlib import Path
 import time
 import random
+from collections import deque
 
 class ProperHRMEvaluator:
     def __init__(self, server_url: str = "http://127.0.0.1:5000"):
@@ -169,7 +171,8 @@ class ProperHRMEvaluator:
             'end': end_pos,
             'oracle_path': oracle_path,
             'oracle_length': len(oracle_path),
-            'hour': current_hour
+            'hour': current_hour,
+            'traffic_grid': traffic_grid.tolist()  # For validation
         }
         
         return input_sequence, oracle_sequence, metadata
@@ -282,19 +285,11 @@ class ProperHRMEvaluator:
                         heappush(open_set, (f_score[neighbor], neighbor))
         
         return []  # No path found
-    
-    def check_start_end_as_path(self, predicted_seq: List[int], start_pos: Tuple[int, int], end_pos: Tuple[int, int]) -> Tuple[bool, bool]:
-        """Check if model outputs PATH tokens at start/end positions (the correct behavior)"""
-        start_idx = start_pos[1] * self.map_width + start_pos[0] 
-        end_idx = end_pos[1] * self.map_width + end_pos[0]
-        
-        start_has_path = predicted_seq[start_idx] == self.HRM_TOKEN_MAP["PATH"]
-        end_has_path = predicted_seq[end_idx] == self.HRM_TOKEN_MAP["PATH"]
-        
-        return start_has_path, end_has_path
 
+    # FIXED: Proper pathfinding validation methods
+    
     def extract_path_coords_from_logits(self, predicted_sequence: List[int]) -> List[Tuple[int, int]]:
-        """Extract PATH coordinates from model prediction using app.py logic"""
+        """Extract PATH coordinates from model prediction"""
         path_coords = []
         
         for i, token in enumerate(predicted_sequence):
@@ -305,21 +300,101 @@ class ProperHRMEvaluator:
         
         return path_coords
     
-    def extract_start_end_from_sequence(self, sequence: List[int]) -> Tuple[Optional[Tuple[int, int]], Optional[Tuple[int, int]]]:
-        """Extract start and end positions from sequence"""
-        start_pos = None
-        end_pos = None
+    def trace_complete_path(self, predicted_sequence: List[int], start_pos: Tuple[int, int], end_pos: Tuple[int, int], traffic_grid: List[List[int]]) -> Dict:
+        """
+        FIXED: Trace a complete, connected path from start to end using BFS
+        This replaces the broken token-counting approach
+        """
+        # Extract all PATH coordinates
+        path_coords = self.extract_path_coords_from_logits(predicted_sequence)
+        path_set = set(path_coords)
         
-        for i, token in enumerate(sequence):
-            y = i // self.map_width
-            x = i % self.map_width
+        # Add start and end to path set (they should be PATH tokens)
+        if start_pos in path_set and end_pos in path_set:
+            has_start_end_markers = True
+        else:
+            has_start_end_markers = False
+            # For tracing purposes, include start/end even if not marked as PATH
+            path_set.add(start_pos)
+            path_set.add(end_pos)
+        
+        if len(path_coords) == 0:
+            return {
+                'found_complete_path': False,
+                'path_length': 0,
+                'valid_traversal': False,
+                'has_start_end_markers': has_start_end_markers,
+                'traced_path': [],
+                'reason': 'No PATH tokens found'
+            }
+        
+        # BFS to trace from start to end using only PATH coordinates
+        queue = deque([(start_pos, [start_pos])])
+        visited = {start_pos}
+        
+        while queue:
+            current_pos, current_path = queue.popleft()
             
-            if token == self.HRM_TOKEN_MAP["START"]:
-                start_pos = (x, y)
-            elif token == self.HRM_TOKEN_MAP["END"]:
-                end_pos = (x, y)
+            if current_pos == end_pos:
+                # Found complete path!
+                return {
+                    'found_complete_path': True,
+                    'path_length': len(current_path),
+                    'valid_traversal': self.is_path_traversable(current_path, traffic_grid),
+                    'has_start_end_markers': has_start_end_markers,
+                    'traced_path': current_path,
+                    'reason': 'Complete path found'
+                }
+            
+            # Check all adjacent cells
+            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
+                next_x = current_pos[0] + dx
+                next_y = current_pos[1] + dy
+                next_pos = (next_x, next_y)
+                
+                # Must be in bounds, be a PATH coordinate, and not visited
+                if (0 <= next_x < self.map_width and 
+                    0 <= next_y < self.map_height and
+                    next_pos in path_set and 
+                    next_pos not in visited):
+                    
+                    visited.add(next_pos)
+                    queue.append((next_pos, current_path + [next_pos]))
         
-        return start_pos, end_pos
+        return {
+            'found_complete_path': False,
+            'path_length': len(path_coords),
+            'valid_traversal': False,
+            'has_start_end_markers': has_start_end_markers,
+            'traced_path': [],
+            'reason': f'No connected path from start to end (found {len(path_coords)} scattered PATH tokens)'
+        }
+    
+    def is_path_traversable(self, path: List[Tuple[int, int]], traffic_grid: List[List[int]]) -> bool:
+        """
+        Check if the traced path goes through legal terrain
+        """
+        for x, y in path:
+            if y >= len(traffic_grid) or x >= len(traffic_grid[0]):
+                return False
+            
+            tile_type = traffic_grid[y][x]
+            
+            # Cannot traverse obstacles or road closures
+            if tile_type in [self.HRM_TOKEN_MAP["OBSTACLE"], self.HRM_TOKEN_MAP["ROAD_CLOSURE"]]:
+                return False
+        
+        return True
+    
+    def check_start_end_as_path(self, predicted_seq: List[int], start_pos: Tuple[int, int], end_pos: Tuple[int, int]) -> Tuple[bool, bool]:
+        """Check if model outputs PATH tokens at start/end positions"""
+        start_idx = start_pos[1] * self.map_width + start_pos[0] 
+        end_idx = end_pos[1] * self.map_width + end_pos[0]
+        
+        start_has_path = predicted_seq[start_idx] == self.HRM_TOKEN_MAP["PATH"]
+        end_has_path = predicted_seq[end_idx] == self.HRM_TOKEN_MAP["PATH"]
+        
+        return start_has_path, end_has_path
     
     def get_model_prediction(self, input_sequence: List[int]) -> Optional[List[int]]:
         """Get prediction from HRM server"""
@@ -347,95 +422,74 @@ class ProperHRMEvaluator:
             return None
     
     def evaluate_prediction(self, input_seq: List[int], predicted_seq: List[int], oracle_seq: List[int], metadata: Dict) -> Dict:
-        """Evaluate a single prediction"""
+        """
+        FIXED: Honest evaluation using proper pathfinding validation
+        """
         
-        # Extract positions using exact same logic as the model
-        pred_start, pred_end = self.extract_start_end_from_sequence(predicted_seq)
-        oracle_start, oracle_end = self.extract_start_end_from_sequence(oracle_seq)
-        
-        # NEW: Check if model outputs PATH tokens at start/end positions (correct behavior)
-        start_as_path, end_as_path = self.check_start_end_as_path(predicted_seq, metadata['start'], metadata['end'])
-        
-        pred_path = self.extract_path_coords_from_logits(predicted_seq)
+        start_pos = metadata['start']
+        end_pos = metadata['end']
         oracle_path = metadata['oracle_path']
+        traffic_grid = metadata['traffic_grid']
         
-        # Exact match
+        # 1. Trace the actual path the model found
+        path_analysis = self.trace_complete_path(predicted_seq, start_pos, end_pos, traffic_grid)
+        
+        # 2. Check start/end marker placement (this part was actually reasonable)
+        start_as_path, end_as_path = self.check_start_end_as_path(predicted_seq, start_pos, end_pos)
+        
+        # 3. Extract all PATH coordinates for analysis
+        pred_path_coords = self.extract_path_coords_from_logits(predicted_seq)
+        
+        # 4. Calculate meaningful metrics
+        if path_analysis['found_complete_path'] and len(oracle_path) > 0:
+            # True path overlap (only if we found a complete path)
+            pred_path_set = set(path_analysis['traced_path'])
+            oracle_path_set = set(oracle_path)
+            overlap = len(pred_path_set.intersection(oracle_path_set)) / len(pred_path_set) if pred_path_set else 0
+            
+            # Path efficiency
+            efficiency = len(oracle_path) / len(path_analysis['traced_path'])
+            
+            # Is it optimal?
+            optimal_path = (path_analysis['path_length'] == len(oracle_path) and 
+                          path_analysis['valid_traversal'] and 
+                          path_analysis['found_complete_path'])
+        else:
+            # No complete path found
+            overlap = 0.0
+            efficiency = 0.0
+            optimal_path = False
+        
+        # 5. Exact sequence match (usually meaningless, but included for completeness)
         exact_match = predicted_seq == oracle_seq
         
-        # Start/end accuracy (original method - looking for START/END tokens)
-        start_correct = pred_start == oracle_start
-        end_correct = pred_end == oracle_end
-        
-        # NEW: Start/end accuracy (correct method - model should output PATH at these positions)
-        start_correct_as_path = start_as_path  # Model should put PATH at start
-        end_correct_as_path = end_as_path      # Model should put PATH at end
-        
-        # Path overlap
-        pred_path_set = set(pred_path)
-        oracle_path_set = set(oracle_path)
-        
-        if pred_path:
-            path_overlap = len(pred_path_set.intersection(oracle_path_set)) / len(pred_path_set)
-        else:
-            path_overlap = 0.0
-        
-        # Path length comparison
-        path_length_ratio = len(pred_path) / max(len(oracle_path), 1)
-        path_efficiency = len(oracle_path) / max(len(pred_path), 1)
-        
-        # Validity checks
-        valid_path = self.is_valid_path(input_seq, pred_path)
-        connected_path = self.is_connected_path(pred_path)
-        optimal_path = (len(pred_path) == len(oracle_path) and valid_path and connected_path)
-        
         return {
-            'exact_match': exact_match,
-            'start_correct': start_correct,
-            'end_correct': end_correct,
-            'start_correct_as_path': start_correct_as_path,  # NEW
-            'end_correct_as_path': end_correct_as_path,      # NEW
-            'path_overlap': path_overlap,
-            'path_length_ratio': path_length_ratio,
-            'path_efficiency': path_efficiency,
-            'valid_path': valid_path,
-            'connected_path': connected_path,
+            # Core pathfinding metrics
+            'found_complete_path': path_analysis['found_complete_path'],
+            'valid_traversal': path_analysis['valid_traversal'],
+            'path_analysis_reason': path_analysis['reason'],
+            
+            # Start/end detection
+            'start_marked_as_path': start_as_path,
+            'end_marked_as_path': end_as_path,
+            
+            # Path quality (only meaningful if complete path found)
+            'path_overlap': overlap,
+            'path_efficiency': efficiency,
             'optimal_path': optimal_path,
-            'pred_path_length': len(pred_path),
-            'oracle_path_length': len(oracle_path)
+            
+            # Length comparisons
+            'predicted_path_length': path_analysis['path_length'],
+            'oracle_path_length': len(oracle_path),
+            'total_path_tokens': len(pred_path_coords),  # All PATH tokens, connected or not
+            
+            # Legacy metrics
+            'exact_match': exact_match,
         }
     
-    def is_valid_path(self, input_sequence: List[int], path_coords: List[Tuple[int, int]]) -> bool:
-        """Check if path goes through valid tiles"""
-        for x, y in path_coords:
-            idx = y * self.map_width + x
-            if idx >= len(input_sequence):
-                return False
-            
-            token = input_sequence[idx]
-            # Path should not go through obstacles or road closures
-            if token in [self.HRM_TOKEN_MAP["OBSTACLE"], self.HRM_TOKEN_MAP["ROAD_CLOSURE"]]:
-                return False
-        return True
-    
-    def is_connected_path(self, path_coords: List[Tuple[int, int]]) -> bool:
-        """Check if path forms a connected sequence"""
-        if len(path_coords) <= 1:
-            return True
-        
-        coord_set = set(path_coords)
-        for x, y in path_coords:
-            adjacent = False
-            for dx, dy in [(0, 1), (0, -1), (1, 0), (-1, 0)]:
-                if (x + dx, y + dy) in coord_set:
-                    adjacent = True
-                    break
-            if not adjacent and len(path_coords) > 1:
-                return False
-        return True
-    
     def run_proper_evaluation(self, num_tests: int = 10) -> Dict:
-        """Run proper evaluation with correct data format"""
-        print(f"Running {num_tests} properly formatted tests...")
+        """Run proper evaluation with honest pathfinding validation"""
+        print(f"Running {num_tests} tests with proper pathfinding validation...")
         
         all_results = []
         inference_times = []
@@ -456,12 +510,18 @@ class ProperHRMEvaluator:
                     print("FAILED (no prediction)")
                     continue
                 
-                # Evaluate
+                # FIXED: Honest evaluation
                 result = self.evaluate_prediction(input_seq, predicted_seq, oracle_seq, metadata)
                 all_results.append(result)
                 inference_times.append(inference_time)
                 
-                print(f"OK ({inference_time:.2f}s, path: {result['pred_path_length']} vs {result['oracle_path_length']} oracle)")
+                # Honest reporting
+                if result['found_complete_path']:
+                    status = f"COMPLETE PATH ({result['predicted_path_length']} vs {result['oracle_path_length']} oracle)"
+                else:
+                    status = f"NO COMPLETE PATH ({result['total_path_tokens']} scattered tokens) - {result['path_analysis_reason']}"
+                
+                print(f"{status} ({inference_time:.2f}s)")
             
             except Exception as e:
                 print(f"FAILED ({e})")
@@ -470,30 +530,37 @@ class ProperHRMEvaluator:
         if not all_results:
             return {}
         
-        # Aggregate results
+        # Aggregate results with honest metrics
         aggregated = {
-            'exact_accuracy': np.mean([r['exact_match'] for r in all_results]),
-            'start_point_accuracy': np.mean([r['start_correct'] for r in all_results]),
-            'end_point_accuracy': np.mean([r['end_correct'] for r in all_results]),
-            'start_point_accuracy_as_path': np.mean([r['start_correct_as_path'] for r in all_results]),  # NEW
-            'end_point_accuracy_as_path': np.mean([r['end_correct_as_path'] for r in all_results]),      # NEW
-            'avg_path_overlap': np.mean([r['path_overlap'] for r in all_results]),
-            'avg_path_length_ratio': np.mean([r['path_length_ratio'] for r in all_results]),
-            'avg_path_efficiency': np.mean([r['path_efficiency'] for r in all_results]),
-            'valid_path_rate': np.mean([r['valid_path'] for r in all_results]),
-            'connected_path_rate': np.mean([r['connected_path'] for r in all_results]),
+            # Core success metrics
+            'complete_path_rate': np.mean([r['found_complete_path'] for r in all_results]),
+            'valid_traversal_rate': np.mean([r['valid_traversal'] for r in all_results]),
             'optimal_path_rate': np.mean([r['optimal_path'] for r in all_results]),
-            'avg_inference_time': np.mean(inference_times),
-            'avg_predicted_path_length': np.mean([r['pred_path_length'] for r in all_results]),
+            
+            # Start/end detection (this part was actually reasonable)
+            'start_detection_rate': np.mean([r['start_marked_as_path'] for r in all_results]),
+            'end_detection_rate': np.mean([r['end_marked_as_path'] for r in all_results]),
+            
+            # Path quality (only for successful cases)
+            'avg_path_overlap': np.mean([r['path_overlap'] for r in all_results if r['found_complete_path']]),
+            'avg_path_efficiency': np.mean([r['path_efficiency'] for r in all_results if r['found_complete_path']]),
+            
+            # Length analysis
+            'avg_predicted_path_length': np.mean([r['predicted_path_length'] for r in all_results]),
             'avg_oracle_path_length': np.mean([r['oracle_path_length'] for r in all_results]),
-            'total_tests': len(all_results)
+            'avg_total_path_tokens': np.mean([r['total_path_tokens'] for r in all_results]),
+            
+            # Meta
+            'avg_inference_time': np.mean(inference_times),
+            'total_tests': len(all_results),
+            'successful_complete_paths': sum([r['found_complete_path'] for r in all_results]),
         }
         
         return aggregated
 
 
 def main():
-    print("Fixed HRM Evaluation Using Exact Codebase Logic")
+    print("FIXED HRM Evaluation - Proper Pathfinding Validation")
     print("=" * 60)
     
     # Initialize evaluator
@@ -508,86 +575,67 @@ def main():
         print("No successful tests to analyze!")
         return
     
-    # Display results
+    # Display honest results
     print("\n" + "=" * 60)
-    print("PROPER EVALUATION RESULTS")
+    print("HONEST EVALUATION RESULTS")
     print("=" * 60)
     
     print(f"Total successful tests: {results['total_tests']}")
     print(f"Average inference time: {results['avg_inference_time']:.3f}s")
     print()
     
-    print("ACCURACY METRICS:")
-    print(f"  Exact Accuracy: {results['exact_accuracy']:.1%}")
-    print(f"  Start Point Accuracy (looking for START token): {results['start_point_accuracy']:.1%}")  
-    print(f"  End Point Accuracy (looking for END token): {results['end_point_accuracy']:.1%}")
-    print(f"  Start Point Accuracy (as PATH token): {results['start_point_accuracy_as_path']:.1%}")  # NEW
-    print(f"  End Point Accuracy (as PATH token): {results['end_point_accuracy_as_path']:.1%}")      # NEW
-    print()
-    
-    print("PATH QUALITY METRICS:")
-    print(f"  Path Overlap: {results['avg_path_overlap']:.1%}")
-    print(f"  Path Length Ratio: {results['avg_path_length_ratio']:.3f}")
-    print(f"  Path Efficiency: {results['avg_path_efficiency']:.3f}")
-    print()
-    
-    print("VALIDITY METRICS:")
-    print(f"  Valid Path Rate: {results['valid_path_rate']:.1%}")
-    print(f"  Connected Path Rate: {results['connected_path_rate']:.1%}")  
+    print("CORE PATHFINDING METRICS:")
+    print(f"  Complete Path Rate: {results['complete_path_rate']:.1%}")
+    print(f"  Valid Traversal Rate: {results['valid_traversal_rate']:.1%}")
     print(f"  Optimal Path Rate: {results['optimal_path_rate']:.1%}")
+    print(f"  Successful Complete Paths: {results['successful_complete_paths']}/{results['total_tests']}")
+    print()
+    
+    print("START/END DETECTION:")
+    print(f"  Start Detection Rate: {results['start_detection_rate']:.1%}")  
+    print(f"  End Detection Rate: {results['end_detection_rate']:.1%}")
+    print()
+    
+    if results['successful_complete_paths'] > 0:
+        print("PATH QUALITY (for successful paths only):")
+        print(f"  Average Path Overlap: {results['avg_path_overlap']:.1%}")
+        print(f"  Average Path Efficiency: {results['avg_path_efficiency']:.3f}")
+    else:
+        print("PATH QUALITY: N/A (no complete paths found)")
     print()
     
     print("PATH LENGTH ANALYSIS:")
-    print(f"  Avg Predicted Length: {results['avg_predicted_path_length']:.1f}")
+    print(f"  Avg Complete Path Length: {results['avg_predicted_path_length']:.1f}")
     print(f"  Avg Oracle Length: {results['avg_oracle_path_length']:.1f}")
+    print(f"  Avg Total PATH Tokens: {results['avg_total_path_tokens']:.1f}")
     print()
     
-    # Analysis
-    print("ANALYSIS:")
+    # Honest analysis
+    print("HONEST ANALYSIS:")
     print("-" * 30)
     
-    if results['start_point_accuracy_as_path'] > 0.8:
-        print("✓ Model correctly identifies start positions (via PATH tokens)")
-    elif results['start_point_accuracy'] > 0.8:
-        print("✓ Model correctly identifies start positions (via START tokens)")
+    if results['complete_path_rate'] > 0.8:
+        print("SUCCESS: Model can find complete, connected paths")
+    elif results['complete_path_rate'] > 0.3:
+        print("PARTIAL: Model sometimes finds complete paths")
     else:
-        print("✗ Model struggles with start position detection")
+        print("FAILURE: Model rarely/never finds complete paths")
     
-    if results['end_point_accuracy_as_path'] > 0.8:
-        print("✓ Model correctly identifies end positions (via PATH tokens)")
-    elif results['end_point_accuracy'] > 0.8:
-        print("✓ Model correctly identifies end positions (via END tokens)")
+    if results['start_detection_rate'] > 0.8 and results['end_detection_rate'] > 0.8:
+        print("SUCCESS: Model correctly marks start/end positions")
     else:
-        print("✗ Model struggles with end position detection")
+        print("ISSUE: Model struggles with start/end position marking")
     
-    # Show the format discovery
-    if results['start_point_accuracy_as_path'] > results['start_point_accuracy']:
-        print(f"🔍 DISCOVERY: Model uses PATH tokens for start/end (correct training format!)")
-        print(f"   Start as PATH: {results['start_point_accuracy_as_path']:.1%} vs START token: {results['start_point_accuracy']:.1%}")
-        print(f"   End as PATH: {results['end_point_accuracy_as_path']:.1%} vs END token: {results['end_point_accuracy']:.1%}")
-    
-    if results['valid_path_rate'] > 0.9:
-        print("✓ Model generates valid paths (avoids obstacles)")
+    if results['valid_traversal_rate'] > 0.8:
+        print("SUCCESS: Model respects terrain constraints")
     else:
-        print("✗ Model sometimes generates invalid paths")
+        print("ISSUE: Model generates invalid paths through obstacles")
     
-    if results['avg_path_overlap'] > 0.5:
-        print("✓ Model paths have good overlap with optimal routes")
-    else:
-        print("~ Model paths deviate from optimal routes")
-    
-    if 0.8 <= results['avg_path_length_ratio'] <= 1.5:
-        print("✓ Model generates reasonably sized paths")
-    else:
-        print(f"~ Model paths are {'too long' if results['avg_path_length_ratio'] > 1.5 else 'too short'}")
-    
-    if results['connected_path_rate'] > 0.8:
-        print("✓ Model generates connected path sequences")
-    else:
-        print("✗ Model generates disconnected path fragments")
+    if results['avg_total_path_tokens'] > results['avg_oracle_path_length'] * 2:
+        print("ISSUE: Model outputs excessive PATH tokens (likely random scattering)")
     
     # Save results
-    output_dir = Path("proper_evaluation_results")
+    output_dir = Path("honest_evaluation_results")
     output_dir.mkdir(exist_ok=True)
     
     with open(output_dir / "results.json", 'w') as f:
