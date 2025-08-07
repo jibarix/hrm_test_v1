@@ -199,7 +199,7 @@ def convert_paper_dataset(config: PaperDataProcessConfig):
         
         # Create train metadata
         train_metadata = PuzzleDatasetMetadata(
-            seq_len=1600,  # 40×40 grid
+            seq_len=900,  # 30×30 grid
             vocab_size=10,  # 0-9 tokens
             pad_id=0,
             ignore_label_id=0,
@@ -239,7 +239,7 @@ def convert_paper_dataset(config: PaperDataProcessConfig):
         
         # Create test metadata
         test_metadata = PuzzleDatasetMetadata(
-            seq_len=1600,  # 40×40 grid
+            seq_len=900,  # 30×30 grid
             vocab_size=10,  # 0-9 tokens
             pad_id=0,
             ignore_label_id=0,

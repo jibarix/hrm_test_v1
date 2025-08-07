@@ -18,7 +18,7 @@ print(f">>> Using device: {DEVICE}")
 # ---------------------------
 # --- IMPORTANT ---
 # Update this path to point to your trained model checkpoint
-CHECKPOINT_PATH = "checkpoints/City-logistics-1k ACT-torch/HierarchicalReasoningModel_ACTV1 cordial-vole/step_22400"
+CHECKPOINT_PATH = "checkpoints/City-logistics-1k ACT-torch/HierarchicalReasoningModel_ACTV1 peach-corgi/step_23430"
 # --- IMPORTANT ---
 
 # Load the configuration file that was saved during training
@@ -59,7 +59,7 @@ print(">>> Model loaded successfully!")
 # ---------------------------
 # 3. Path Decoding Functions
 # ---------------------------
-MAP_DIMENSIONS = {"width": 40, "height": 40}
+MAP_DIMENSIONS = {"width": 30, "height": 30}
 
 HRM_TOKEN_MAP = {
     "PAD": 0,           # Padding token

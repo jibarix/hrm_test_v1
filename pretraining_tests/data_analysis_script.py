@@ -26,7 +26,7 @@ HRM_TOKEN_MAP = {
     'PATH': 9           # Optimal Route
 }
 
-MAP_DIMENSIONS = {'width': 40, 'height': 40}
+MAP_DIMENSIONS = {'width': 30, 'height': 30}
 
 class HRMCityDatasetAnalyzer:
     def __init__(self, data_dir="data/city-logistics-1k"):
