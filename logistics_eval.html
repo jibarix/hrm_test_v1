@@ -479,7 +479,7 @@
 
         // --- Enhanced HRM Prediction with Reasoning Logs ---
         async function getHRMPrediction(inputSequence) {
-            statusEl.textContent = '🧠 HRM is thinking step-by-step...';
+            statusEl.textContent = 'HRM is thinking step-by-step...';
             predictBtn.disabled = true;
 
             try {
@@ -498,6 +498,11 @@
 
                 const result = await response.json();
                 
+                // ADD DEBUGGING HERE
+                console.log('Full server response:', result);
+                console.log('Path coordinates:', result.path_coords);
+                console.log('Path coordinates length:', result.path_coords?.length);
+                
                 // Store reasoning steps
                 lastReasoningSteps = result.reasoning_steps || [];
                 
@@ -515,7 +520,7 @@
 
             } catch (error) {
                 console.error("Error getting prediction:", error);
-                statusEl.textContent = "❌ Could not connect to HRM server. Is it running?";
+                statusEl.textContent = "Could not connect to HRM server. Is it running?";
                 predictBtn.disabled = false;
                 return [];
             }
@@ -741,8 +746,23 @@
 
         function animateVehicle(path) {
             if (path.length === 0) {
-                statusEl.textContent = '⚠️ No route found!';
+                statusEl.textContent = 'No route found!';
                 return;
+            }
+            
+            // ADD DEBUGGING HERE
+            console.log('Animating vehicle with path:', path);
+            console.log('Current traffic grid dimensions:', trafficGrid.length, 'x', trafficGrid[0]?.length);
+            
+            // Check if path coordinates are valid
+            for (let i = 0; i < path.length; i++) {
+                const pos = path[i];
+                if (pos.y >= MAP_DIMENSIONS.height || pos.x >= MAP_DIMENSIONS.width) {
+                    console.warn(`Invalid coordinate at index ${i}:`, pos);
+                }
+                if (trafficGrid[pos.y] && trafficGrid[pos.y][pos.x] === TILE_TYPES.OBSTACLE) {
+                    console.warn(`Path goes through obstacle at:`, pos);
+                }
             }
             isAnimating = true;
             let step = 0;
